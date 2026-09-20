@@ -8,6 +8,12 @@ It turns raw market and security data into a plain-language verdict
 (🔴/🟡/🟢/⚪) that a non-technical crypto user can act on in one glance,
 instead of a dashboard of numbers they'd need expertise to interpret.
 
+## Live
+
+- Web app: https://tokenlens-eight.vercel.app/ (Vercel)
+- API: https://tokenlens-sxdq.onrender.com (Render; `/health`, `/check/:tokenAddress`)
+- Code: https://github.com/walterdanny00/tokenlens
+
 ## Why this idea (pivot history)
 
 Two earlier directions were considered and dropped before landing here:
@@ -87,21 +93,25 @@ entries were reviewed.
    route and JSON error handling in place. Built and tested. `/watch` stores
    an initial verdict but does not yet re-check on a schedule (see layer 6);
    the watchlist is in-memory.
-5. **Frontend** — one input box → traffic-light verdict + paragraph;
-   expandable "see the data" section for power users; "watch this token"
-   button. Deploy on Vercel. Backend now supplies everything it needs
-   (chain auto-detect, `data`, `caveats`). **Not started — next build step.**
+5. **Frontend** (`frontend/`, React + Vite) — one input box → full-width
+   traffic-light verdict band with plain-language reasons and any caveat;
+   network auto-detect; example tokens; expandable "See the data" section;
+   shareable links; friendly error messages and a slow-server notice. Built, tested (21 unit
+   tests + a browser run against a mocked API) and **deployed on Vercel**.
+   The "watch this token" button is deliberately absent until alerts exist.
 6. **Alerting layer** — Telegram bot; re-checks watched tokens on a
    schedule and messages only when the verdict changes. Backend plumbing
    (`/watch`, `/watchlist`) exists; the re-check loop and the bot itself
    are **not started**.
 7. **MCP/agent layer** — stretch goal, built last, cut first if time is
    short. **Not started.**
-8. **Stack/infra** — Node/Express backend + React frontend, Render
-   (backend) + Vercel (frontend), repo `walterdanny00/tokenlens`. `dotenv`
-   for key loading; `.gitignore` + `.env.example` in place; repo-level
-   `package.json` (express, dotenv, cors) with a `start` script added in
-   session 5 (it was missing, which would have broken Render).
+8. **Stack/infra** — Node/Express backend + React frontend. Backend on
+   Render (free instance, Node 22, auto-deploy from `main`, `CMC_API_KEY` in
+   Render's environment); frontend on Vercel (Root Directory `frontend`);
+   repo `walterdanny00/tokenlens`. An external cron job pings the backend so
+   the free instance doesn't sleep. `dotenv` for local key loading;
+   `.gitignore` + `.env.example` in place; repo-level `package.json`
+   (express, dotenv, cors) with a `start` script.
 
 ## Current status (living — update each session)
 
@@ -110,27 +120,28 @@ entries were reviewed.
   takes `platformName` + `address` (works); `/v1/dex/token` takes
   `platform` + `address` (works). `holders/list` not retested. The CMC
   support report should be corrected.
-- Layers 1–4 are built, tested, and **verified live end to end** (session 5):
-  PEPE -> Ethereum YELLOW; BONK -> Solana GREEN with a caveat.
-  `test_realdata.js` locks in fixes using captured real responses.
+- Layers 1–5 and 8 are built, tested and **live end to end** (session 5):
+  PEPE -> Ethereum YELLOW; BONK -> Solana GREEN with a caveat, from the
+  deployed site through the deployed API.
 - Known gaps: no Solana lock signal yet (GoPlus `dex[].burn_percent` is a
-  candidate); EVM lock status reads V2-style LP holders only; backend not yet
-  deployed; watchlist is in-memory.
+  candidate); EVM lock status reads V2-style LP holders only; the watchlist
+  is in-memory (lost on restart); no alerts yet.
 - Bug patterns to keep watching: `null < N` evaluating true in JS (found
   again in session 5), and treating "unknown" as "safe".
-- Key-safety setup complete: `.gitignore`, `.env.example`, `dotenv`.
+- Key-safety setup complete: `.gitignore`, `.env.example`, `dotenv`; the key
+  lives only in `.env` locally and in Render's environment.
 - Full details of what changed and why: `docs/session-05.md`.
 
 ## Next steps (in order)
 
-1. Confirm session 5's commit + push landed.
-2. Build the frontend (layer 5) against the `/check` response.
-3. Deploy: backend to Render (set `CMC_API_KEY`, `CORS_ORIGIN`), frontend to
-   Vercel; test over HTTP.
-4. Optional, strengthens the API-use story: add CMC's `security/detail` as a
+1. Telegram alerting (layer 6): scheduled re-check loop + bot messaging on
+   verdict change, with a watchlist that survives restarts (or a deliberate
+   in-memory demo setup). The demo should show a live alert firing.
+2. Add the Watch button to the frontend once alerts work.
+3. Demo video (about 2 minutes): paste an address, show the verdict and the
+   caveat, open the data, share the link, show the alert.
+4. DoraHacks BUIDL submission before the Oct 1 deadline: description, live
+   links, repo (public), video. Check the live links open without any login.
+5. Optional, strengthens the API-use story: add CMC's `security/detail` as a
    second opinion next to GoPlus; correct the CMC support report.
-5. Build the Telegram alerting layer (layer 6) — scheduled re-check loop +
-   bot messaging on verdict change (needs a persistent watchlist).
 6. MCP layer (layer 7) — only if time allows.
-7. Add a README to the repo (code quality/documentation judging criterion).
-8. Demo video + DoraHacks BUIDL submission before the Oct 1 deadline.

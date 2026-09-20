@@ -79,23 +79,64 @@
     `node server.js` on port 3000 answered earlier test requests; same-named
     downloads can be stale — copy the newest file (or use unique names).
 
+13. **Backend deployed to Render** (free instance): `https://tokenlens-sxdq.onrender.com`.
+    Settings: build `npm install`, start `npm start`, `NODE_VERSION=22`,
+    `CMC_API_KEY` set in Render's Environment (never in the repo);
+    `CORS_ORIGIN` left unset (open). Auto-deploys on every push to `main`.
+    `/` and `/health` return `{"ok":true,"service":"tokenlens"}`. First
+    deploy looped because the Start Command had been set to `npm install`
+    (it exits immediately) — fixed to `npm start`. Verified live from Render:
+    PEPE -> Ethereum YELLOW, BONK -> Solana GREEN with one caveat.
+14. **Keep-alive:** free Render instances sleep after 15 minutes idle; an
+    external cron-job service now pings `/` every few minutes (working).
+    Free instances get 750 hours/month, enough for one always-on service.
+    Optional: point the cron at `/health` instead.
+15. **Frontend built and deployed** — `frontend/` (React 19 + Vite 5), live at
+    `https://tokenlens-eight.vercel.app/` (Vercel, Root Directory `frontend`,
+    no env vars needed; `VITE_API_URL` defaults to the Render URL).
+    Design: the verdict is a full-width color band that opens like an
+    aperture; each state has its own shape and words (never color alone);
+    fonts Bricolage Grotesque + Public Sans. Features: one input with paste
+    button, network picker with auto-detect, PEPE/BONK example chips, reasons
+    and caveat, "also on other networks" note, expandable "See the data"
+    (unknown always shown as unknown), shareable links
+    (`?token=...&network=...` that auto-run), friendly errors, and a "server is
+    waking up" notice that only appears if a check takes over 5 seconds (a
+    safety net for redeploys or a missed ping; the keep-alive cron means
+    visitors normally never see it). No Watch button yet — alerts are not
+    built, so it would promise something the product can't do (`watchToken`
+    is ready in `src/api.js`). "Token age" was relabelled **"Trading for"**:
+    the number is when CMC first saw a pool, not the token's real age.
+16. **Frontend verification:** 21 unit tests (`npm test` in `frontend/`), plus
+    a browser run of the real bundle against a mocked API through 12 flows
+    (examples, panel, invalid input, server/network errors, slow server, share
+    link, unlisted network, unknown verdict) with no console errors — the
+    browser harness is not in the repo. Checked on a real phone: PEPE yellow,
+    BONK green with caveat, invalid input error, shared link auto-runs.
+17. **More lessons:** a phone browser's text-scaling setting can make the UI
+    look unevenly sized (the same page looked right in a second browser);
+    the Vercel build prints the same harmless esbuild `allow-scripts` warning
+    as local installs.
+
 ## Open items carried into next session
 
-- Confirm this session's commit + push landed (`git status`, `git log -1`).
-- Not yet tested over HTTP since the fixes (`node server.js` + curl) — the
-  live check went through `handleCheck` directly.
+- **Telegram alerting (layer 6) — next build.** Needs a scheduled re-check
+  loop, a Telegram bot, and a watchlist that survives restarts (the current
+  one is in-memory and is lost on every redeploy or restart). Decide storage
+  (a free hosted store, or accept in-memory for the demo and register the
+  token right before recording). A demo should show a live alert firing.
+- Add the Watch button to the frontend once alerts exist.
+- **Demo video and DoraHacks submission** before the Oct 1 deadline — make
+  sure the GitHub repo is public (or judges can access it) and the live links
+  work without any login (check the Vercel URL in a private tab).
 - Correct/withdraw the CMC support report about `security/detail`.
 - Optional: wire CMC's `/v1/dex/security/detail` in as a second opinion next
-  to GoPlus (stronger CMC-API story, and a fallback if GoPlus is down). Need
-  to see the full `securityItems` code list and a risky token's response.
+  to GoPlus (need the full `securityItems` code list and a risky token).
 - Solana lock signal: GoPlus `dex[].burn_percent` (0–100) on Standard pools
   could verify locks for CPMM-heavy tokens — not implemented.
 - EVM `liquidity_locked` reads only V2-style LP holders; a young V3-heavy
   token with a tiny unlocked V2 pool could read as "unlocked" — review.
 - `price_change_24h_pct` (`pc24h`) unit unverified; not exposed in `data`.
-- **Frontend (layer 5) not started.** Needs: one input, chain auto-detect
-  (`networkName`), `alsoOnNetworks` note, caveat line, "see the data" panel
-  from `data`, Watch button posting `/watch` with the detected `networkId`.
-- Watchlist is in-memory (lost on Render restart) — matters for layer 6.
-- Telegram alerting (layer 6), MCP layer (layer 7), README, demo video and
-  DoraHacks submission — not started. Backend not yet deployed to Render.
+- MCP layer (layer 7) — stretch, only if time allows.
+- Housekeeping: switch the cron ping to `/health` (optional); `CORS_ORIGIN`
+  is open on purpose so any judge-facing URL works.
