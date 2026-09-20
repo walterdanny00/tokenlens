@@ -15,9 +15,11 @@ const { createRateLimiter, rateLimitMiddleware } = require("./rateLimit");
 const app = express();
 
 // Behind Render's proxy, req.ip is the proxy's address unless we trust it.
-// TRUST_PROXY is how many proxy hops to trust (1 on Render; 0 when running
-// locally with no proxy). Check GET /ip after deploying — see README.
-const proxyHops = Number(process.env.TRUST_PROXY ?? 1);
+// Render appends its own address to X-Forwarded-For and does not strip values a
+// client sends, so the real visitor is the second entry from the right: trust
+// exactly 2 hops (not "everything", which a visitor could spoof). Set
+// TRUST_PROXY=0 when running locally with no proxy. Check GET /ip after deploying.
+const proxyHops = Number(process.env.TRUST_PROXY ?? 2);
 app.set("trust proxy", Number.isInteger(proxyHops) && proxyHops > 0 ? proxyHops : false);
 
 // Public read API. Set CORS_ORIGIN (e.g. the Vercel URL) to lock it down.
@@ -60,9 +62,10 @@ app.get(["/", "/health"], (req, res) => {
   res.json({ ok: true, service: "tokenlens" });
 });
 
-// Shows the address the server sees for you. Used once to confirm TRUST_PROXY.
+// Shows the address the server sees for you (and the raw header it was read
+// from). Used to confirm TRUST_PROXY; it only ever echoes the caller's own request.
 app.get("/ip", (req, res) => {
-  res.json({ ip: req.ip });
+  res.json({ ip: req.ip, forwardedFor: req.headers["x-forwarded-for"] || null });
 });
 
 app.use(["/check", "/watch", "/watchlist"], rateLimitMiddleware(perVisitor));

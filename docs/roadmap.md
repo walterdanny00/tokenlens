@@ -136,8 +136,9 @@ entries were reviewed.
 
 ## Next steps (in order)
 
-1. Confirm the public-API safeguards on Render (`/ip`, `X-Cache`, a burst
-   returning 429), then make the GitHub repo public.
+1. Confirm the public-API safeguards on Render (`/ip` shows your real IP even
+   with a spoofed header, `X-Cache` HIT, a burst returning 429), then make the
+   GitHub repo public.
 2. Telegram alerting (layer 6): scheduled re-check loop + bot messaging on
    verdict change, with a watchlist that survives restarts (or a deliberate
    in-memory demo setup). The demo should show a live alert firing.

@@ -130,16 +130,20 @@
     All tunable by env (`RATE_LIMIT_PER_MIN`, `MAX_LOOKUPS_PER_10_MIN`,
     `CACHE_TTL_SECONDS`, `TRUST_PROXY`). `handleCheck`/`handleWatch` take an
     optional `protection` argument, so behaviour is unchanged without it.
-    `GET /ip` was added to confirm `TRUST_PROXY` (Render's proxy makes `req.ip`
-    the proxy's address unless it is trusted; the right hop count is checked by
-    comparing `/ip` with your real IP). New `test_protection.js` (16 tests); the
+    `GET /ip` was added to confirm `TRUST_PROXY`. Testing on the live site
+    showed `TRUST_PROXY=1` still saw an internal `10.x` address (so every
+    request looked like a different visitor and nothing was limited): Render
+    appends its own address to `X-Forwarded-For` and does not strip values a
+    client sends, so the real visitor is the second entry from the right —
+    the default is now 2 (trusting "all" would let a visitor spoof their IP). New `test_protection.js` (16 tests); the
     server wiring was also exercised through an offline Express stand-in.
 
 ## Open items carried into next session
 
-- **Confirm the safeguards on Render:** `/ip` should return your real IP (if
-  not, raise `TRUST_PROXY` to 2), a repeat check should show `X-Cache: HIT`,
-  and a burst should start returning 429. Lower `MAX_LOOKUPS_PER_10_MIN` if the
+- **Re-confirm the safeguards on Render after the `TRUST_PROXY=2` change:**
+  `/ip` should return your real IP (also when a fake `X-Forwarded-For` is sent),
+  a repeat check should show `X-Cache: HIT` (confirmed), and a burst should
+  start returning 429 (it did not with the old default). Lower `MAX_LOOKUPS_PER_10_MIN` if the
   CMC plan has few credits (default allows up to about 14,400 lookups a day).
 - **`GET /watchlist` is public.** Fine today, but when Telegram alerts are added
   it must never expose chat IDs — store those privately.
