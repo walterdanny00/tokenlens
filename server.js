@@ -25,7 +25,7 @@ const watchlist = makeWatchlist();
 // EVM (0x + 40 hex) and Solana (base58, 32-44 chars) addresses both fit this.
 const ADDRESS_RE = /^[A-Za-z0-9]{20,70}$/;
 
-app.get("/", (req, res) => {
+app.get(["/", "/health"], (req, res) => {
   res.json({ ok: true, service: "tokenlens" });
 });
 
