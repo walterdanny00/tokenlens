@@ -129,6 +129,29 @@ In `data`, `null` always means unknown, never "no". Other routes: `GET /health`,
 `POST /watch` and `GET /watchlist` (an in-memory watchlist; alerts are not built
 yet).
 
+## Keeping a public API safe
+
+Every check that isn't answered from memory spends CoinMarketCap credits, so the
+API protects them:
+
+- **Answer cache.** An identical check (same address and network) is answered
+  from memory for 60 seconds. Simultaneous requests for the same token share one
+  lookup. A partial answer, where a data source hiccuped, is kept for only 10
+  seconds so it heals quickly. Responses carry an `X-Cache: HIT` or `MISS`
+  header.
+- **Per-visitor rate limit.** 30 requests a minute per IP, answered with a plain
+  message and a `Retry-After` header.
+- **Shared lookup budget.** At most 100 lookups per 10 minutes reach the paid
+  APIs across all visitors. Beyond that new tokens get a "very busy" answer
+  (HTTP 503) while already-cached tokens keep working.
+- `/` and `/health` are never limited and never call an upstream API, so a
+  keep-alive ping is free.
+- The watchlist is capped at 500 entries.
+
+All limits can be changed with the environment variables below. On a host behind
+a proxy, set `TRUST_PROXY` so the limiter sees each visitor's real IP, and check
+it once: `GET /ip` should return your own IP address.
+
 ## Run it locally
 
 You need Node 20 or newer and a CoinMarketCap API key.
@@ -157,6 +180,10 @@ The web app talks to the deployed API by default. To use your local one, set
 | `CMC_API_KEY` | backend (required) | CoinMarketCap API key. Never commit it |
 | `PORT` | backend | Port to listen on (hosts set this) |
 | `CORS_ORIGIN` | backend | Restrict which site may call the API. Open by default |
+| `TRUST_PROXY` | backend | How many proxy hops to trust when reading a visitor's IP (1 on Render, 0 locally) |
+| `RATE_LIMIT_PER_MIN` | backend | Checks allowed per visitor per minute (default 30) |
+| `MAX_LOOKUPS_PER_10_MIN` | backend | Lookups that reach the paid APIs, for everyone combined (default 100) |
+| `CACHE_TTL_SECONDS` | backend | How long a good answer is reused (default 60) |
 | `VITE_API_URL` | frontend | Where the API lives |
 
 ## Tests
@@ -166,6 +193,7 @@ node test_scoring.js
 node test_ingestion.js
 node test_routes.js
 node test_realdata.js     # regression tests built from real captured responses
+node test_protection.js   # cache, rate limit and lookup budget
 cd frontend && npm test   # formatting and API-client tests
 ```
 
@@ -181,6 +209,7 @@ Ethereum, BONK on Solana) with the network mocked, so it runs offline.
 | `scoring.js` | The verdict rules |
 | `copyGenerator.js` | Plain-language message |
 | `routes.js`, `server.js` | The API |
+| `cache.js`, `rateLimit.js` | Answer cache and rate limiting |
 | `frontend/` | The web app |
 | `docs/` | Roadmap and a brief per working session |
 
@@ -192,8 +221,9 @@ Ethereum, BONK on Solana) with the network mocked, so it runs offline.
   there. Solana risk is judged from the mint, freeze and balance authorities.
 - Liquidity locks can't be verified for concentrated-liquidity pools; the app
   says so instead of guessing.
-- The API runs on a free host kept awake by a scheduled ping. The watchlist is
-  in memory, so it is cleared on every redeploy or restart.
+- The API runs on a free host kept awake by a scheduled ping. The watchlist and
+  the answer cache are in memory, so they are cleared on every redeploy or
+  restart.
 - Alerts (Telegram) are planned, not built yet.
 
 ## Roadmap

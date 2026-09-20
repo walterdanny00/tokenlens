@@ -130,18 +130,22 @@ entries were reviewed.
   again in session 5), and treating "unknown" as "safe".
 - Key-safety setup complete: `.gitignore`, `.env.example`, `dotenv`; the key
   lives only in `.env` locally and in Render's environment.
+- Public-API safeguards in place (session 5): answer cache, per-visitor rate
+  limit, shared lookup budget, watchlist cap — see `docs/session-05.md`.
 - Full details of what changed and why: `docs/session-05.md`.
 
 ## Next steps (in order)
 
-1. Telegram alerting (layer 6): scheduled re-check loop + bot messaging on
+1. Confirm the public-API safeguards on Render (`/ip`, `X-Cache`, a burst
+   returning 429), then make the GitHub repo public.
+2. Telegram alerting (layer 6): scheduled re-check loop + bot messaging on
    verdict change, with a watchlist that survives restarts (or a deliberate
    in-memory demo setup). The demo should show a live alert firing.
-2. Add the Watch button to the frontend once alerts work.
-3. Demo video (about 2 minutes): paste an address, show the verdict and the
+3. Add the Watch button to the frontend once alerts work.
+4. Demo video (about 2 minutes): paste an address, show the verdict and the
    caveat, open the data, share the link, show the alert.
-4. DoraHacks BUIDL submission before the Oct 1 deadline: description, live
+5. DoraHacks BUIDL submission before the Oct 1 deadline: description, live
    links, repo (public), video. Check the live links open without any login.
-5. Optional, strengthens the API-use story: add CMC's `security/detail` as a
+6. Optional, strengthens the API-use story: add CMC's `security/detail` as a
    second opinion next to GoPlus; correct the CMC support report.
-6. MCP layer (layer 7) — only if time allows.
+7. MCP layer (layer 7) — only if time allows.

@@ -36,9 +36,31 @@ function buildData(record) {
   };
 }
 
-// networkId is optional: when omitted, the network is auto-detected from
-// the token address (deepest liquidity wins if it exists on several).
-async function handleCheck(apiKey, { tokenAddress, networkId, symbol }) {
+const CACHE_TTL_MS = 60 * 1000; // a good answer is reused for a minute
+const DEGRADED_TTL_MS = 10 * 1000; // a partial answer only briefly, so a hiccup clears fast
+const MAX_WATCHLIST = 500;
+
+const BUSY = { error: "TokenLens is very busy right now. Please try again in a few minutes." };
+
+// EVM addresses are case-insensitive; Solana addresses are not.
+function cacheKey(tokenAddress, network, symbol) {
+  const address = tokenAddress.startsWith("0x") ? tokenAddress.toLowerCase() : tokenAddress;
+  return `${address}|${network ?? "auto"}|${String(symbol || "").toLowerCase()}`;
+}
+
+/**
+ * networkId is optional: when omitted, the network is auto-detected from the
+ * token address (deepest liquidity wins if it exists on several).
+ *
+ * `protection` is optional and switches on the safeguards a public API needs:
+ *   cache  - a TtlCache; identical checks are answered from memory
+ *   budget - a rate limiter shared by everyone; every lookup that reaches the
+ *            paid upstream APIs spends one unit, cached answers spend none
+ * Without it, behaviour is exactly as before (handy for tests).
+ */
+async function handleCheck(apiKey, { tokenAddress, networkId, symbol }, protection = {}) {
+  const { cache, budget, ttlMs = CACHE_TTL_MS, degradedTtlMs = DEGRADED_TTL_MS } = protection;
+
   let network;
   if (networkId !== undefined && networkId !== null && networkId !== "") {
     network = Number(networkId);
@@ -47,39 +69,68 @@ async function handleCheck(apiKey, { tokenAddress, networkId, symbol }) {
     }
   }
 
-  const identifier = { networkId: network, tokenAddress, symbol };
-  const record = await getTokenRecord(apiKey, identifier);
-  const result = scoreToken(record);
-  const copy = generateVerdictCopy(result);
+  const compute = async () => {
+    if (budget) {
+      const spent = budget.hit("lookups");
+      if (!spent.allowed) return { status: 503, body: BUSY, retryAfterSec: spent.retryAfterSec };
+    }
 
-  return {
-    status: 200,
-    body: {
-      tokenAddress,
-      networkId: record.network_id ?? network ?? null,
-      networkName: record.network_name || null,
-      alsoOnNetworks: record.also_on_networks || [],
-      verdict: result.verdict,
-      reasons: result.reasons,
-      caveats: result.caveats || [],
-      message: copy,
-      dataSource: record.source,
-      degradedReason: record.degraded_reason || record.error || record.security_fetch_error || null,
-      data: buildData(record),
-    },
+    const identifier = { networkId: network, tokenAddress, symbol };
+    const record = await getTokenRecord(apiKey, identifier);
+    const result = scoreToken(record);
+    const copy = generateVerdictCopy(result);
+
+    return {
+      status: 200,
+      body: {
+        tokenAddress,
+        networkId: record.network_id ?? network ?? null,
+        networkName: record.network_name || null,
+        alsoOnNetworks: record.also_on_networks || [],
+        verdict: result.verdict,
+        reasons: result.reasons,
+        caveats: result.caveats || [],
+        message: copy,
+        dataSource: record.source,
+        degradedReason: record.degraded_reason || record.error || record.security_fetch_error || null,
+        data: buildData(record),
+      },
+    };
   };
+
+  if (!cache) return compute();
+
+  const { value, hit } = await cache.wrap(
+    cacheKey(tokenAddress, network, symbol),
+    compute,
+    (res) => (res.status !== 200 ? 0 : res.body.degradedReason ? degradedTtlMs : ttlMs)
+  );
+  return { ...value, cached: hit };
 }
 
-async function handleWatch(apiKey, watchlist, { networkId, tokenAddress, symbol }) {
+async function handleWatch(
+  apiKey,
+  watchlist,
+  { networkId, tokenAddress, symbol },
+  { budget, maxWatchlist = MAX_WATCHLIST } = {}
+) {
   if (!networkId || !tokenAddress) {
     return { status: 400, body: { error: "networkId and tokenAddress are required." } };
+  }
+
+  const key = `${networkId}:${tokenAddress}`;
+  if (!watchlist.has(key) && watchlist.size >= maxWatchlist) {
+    return { status: 503, body: { error: "The watchlist is full right now. Please try again later." } };
+  }
+  if (budget) {
+    const spent = budget.hit("lookups");
+    if (!spent.allowed) return { status: 503, body: BUSY, retryAfterSec: spent.retryAfterSec };
   }
 
   const identifier = { networkId: Number(networkId), tokenAddress, symbol };
   const record = await getTokenRecord(apiKey, identifier);
   const result = scoreToken(record);
 
-  const key = `${networkId}:${tokenAddress}`;
   watchlist.set(key, {
     identifier,
     lastVerdict: result.verdict,

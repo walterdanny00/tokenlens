@@ -118,8 +118,31 @@
     the Vercel build prints the same harmless esbuild `allow-scripts` warning
     as local installs.
 
+18. **Protecting the public API** (before making the repo public). Every
+    uncached `/check` spends CoinMarketCap credits (1 per search), so the API
+    now has: an in-memory answer cache (`cache.js`; 60s for a good answer, 10s
+    for a partial one, single-flight for simultaneous identical requests,
+    `X-Cache` HIT/MISS header); a per-visitor rate limit (`rateLimit.js`; 30 per
+    minute per IP, HTTP 429 with a plain message and `Retry-After`); a shared
+    lookup budget (100 uncached lookups per 10 minutes for everyone, HTTP 503
+    "very busy" — cached answers still served); a 500-entry cap on the
+    watchlist; and `/`, `/health` exempt from limits so the cron ping is free.
+    All tunable by env (`RATE_LIMIT_PER_MIN`, `MAX_LOOKUPS_PER_10_MIN`,
+    `CACHE_TTL_SECONDS`, `TRUST_PROXY`). `handleCheck`/`handleWatch` take an
+    optional `protection` argument, so behaviour is unchanged without it.
+    `GET /ip` was added to confirm `TRUST_PROXY` (Render's proxy makes `req.ip`
+    the proxy's address unless it is trusted; the right hop count is checked by
+    comparing `/ip` with your real IP). New `test_protection.js` (16 tests); the
+    server wiring was also exercised through an offline Express stand-in.
+
 ## Open items carried into next session
 
+- **Confirm the safeguards on Render:** `/ip` should return your real IP (if
+  not, raise `TRUST_PROXY` to 2), a repeat check should show `X-Cache: HIT`,
+  and a burst should start returning 429. Lower `MAX_LOOKUPS_PER_10_MIN` if the
+  CMC plan has few credits (default allows up to about 14,400 lookups a day).
+- **`GET /watchlist` is public.** Fine today, but when Telegram alerts are added
+  it must never expose chat IDs — store those privately.
 - **Telegram alerting (layer 6) — next build.** Needs a scheduled re-check
   loop, a Telegram bot, and a watchlist that survives restarts (the current
   one is in-memory and is lost on every redeploy or restart). Decide storage
