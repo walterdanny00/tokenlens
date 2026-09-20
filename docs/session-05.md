@@ -131,16 +131,18 @@
     `CACHE_TTL_SECONDS`, `TRUST_PROXY`). `handleCheck`/`handleWatch` take an
     optional `protection` argument, so behaviour is unchanged without it.
     `GET /ip` was added to confirm `TRUST_PROXY`. Testing on the live site
-    showed `TRUST_PROXY=1` still saw an internal `10.x` address (so every
-    request looked like a different visitor and nothing was limited): Render
-    appends its own address to `X-Forwarded-For` and does not strip values a
-    client sends, so the real visitor is the second entry from the right —
-    the default is now 2 (trusting "all" would let a visitor spoof their IP). New `test_protection.js` (16 tests); the
+    showed `TRUST_PROXY=1` saw an internal `10.x` address and `2` saw a
+    Cloudflare edge address that changes per request, so nothing was limited.
+    Requests arrive through Cloudflare and Render's proxy
+    (`X-Forwarded-For` = client, Cloudflare edge, Render internal) and Render
+    does not strip values a client sends, so the default is now **3** hops
+    (trusting "all" would let a visitor spoof their IP). To confirm on the live
+    site: `/ip` shows your real address, also with a fake `X-Forwarded-For`. New `test_protection.js` (16 tests); the
     server wiring was also exercised through an offline Express stand-in.
 
 ## Open items carried into next session
 
-- **Re-confirm the safeguards on Render after the `TRUST_PROXY=2` change:**
+- **Re-confirm the safeguards on Render after the `TRUST_PROXY=3` change:**
   `/ip` should return your real IP (also when a fake `X-Forwarded-For` is sent),
   a repeat check should show `X-Cache: HIT` (confirmed), and a burst should
   start returning 429 (it did not with the old default). Lower `MAX_LOOKUPS_PER_10_MIN` if the

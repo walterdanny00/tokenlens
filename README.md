@@ -149,10 +149,11 @@ API protects them:
 - The watchlist is capped at 500 entries.
 
 All limits can be changed with the environment variables below. Behind a
-proxy the limiter must see each visitor's real IP. Render appends its own address
-to `X-Forwarded-For` and doesn't strip values a visitor sends, so TokenLens
-trusts exactly two hops rather than the whole header, which can't be spoofed
-that way. To confirm, `GET /ip` should return your own IP address.
+proxy the limiter must see each visitor's real IP. Requests reach the API through
+Cloudflare and then Render's own proxy, each adding an address to
+`X-Forwarded-For`, and Render doesn't strip values a visitor sends. TokenLens
+therefore trusts exactly three hops rather than the whole header, so a spoofed
+header can't fool it. To confirm, `GET /ip` should return your own IP address.
 
 ## Run it locally
 
@@ -182,7 +183,7 @@ The web app talks to the deployed API by default. To use your local one, set
 | `CMC_API_KEY` | backend (required) | CoinMarketCap API key. Never commit it |
 | `PORT` | backend | Port to listen on (hosts set this) |
 | `CORS_ORIGIN` | backend | Restrict which site may call the API. Open by default |
-| `TRUST_PROXY` | backend | How many proxy hops to trust when reading a visitor's IP (default 2, which is right for Render; use 0 locally) |
+| `TRUST_PROXY` | backend | How many proxy hops to trust when reading a visitor's IP (default 3, which is right for Render; use 0 locally) |
 | `RATE_LIMIT_PER_MIN` | backend | Checks allowed per visitor per minute (default 30) |
 | `MAX_LOOKUPS_PER_10_MIN` | backend | Lookups that reach the paid APIs, for everyone combined (default 100) |
 | `CACHE_TTL_SECONDS` | backend | How long a good answer is reused (default 60) |

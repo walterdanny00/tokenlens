@@ -15,11 +15,13 @@ const { createRateLimiter, rateLimitMiddleware } = require("./rateLimit");
 const app = express();
 
 // Behind Render's proxy, req.ip is the proxy's address unless we trust it.
-// Render appends its own address to X-Forwarded-For and does not strip values a
-// client sends, so the real visitor is the second entry from the right: trust
-// exactly 2 hops (not "everything", which a visitor could spoof). Set
-// TRUST_PROXY=0 when running locally with no proxy. Check GET /ip after deploying.
-const proxyHops = Number(process.env.TRUST_PROXY ?? 2);
+// Requests reach the API through Cloudflare and then Render's own proxy; each
+// appends an address to X-Forwarded-For (client, Cloudflare edge, Render), and
+// Render does not strip values a client sends. So the real visitor is the 4th
+// address counting from the app: trust exactly 3 hops (not "everything", which a
+// visitor could spoof). Set TRUST_PROXY=0 when running locally with no proxy.
+// Check GET /ip after deploying: it should show your own address.
+const proxyHops = Number(process.env.TRUST_PROXY ?? 3);
 app.set("trust proxy", Number.isInteger(proxyHops) && proxyHops > 0 ? proxyHops : false);
 
 // Public read API. Set CORS_ORIGIN (e.g. the Vercel URL) to lock it down.
