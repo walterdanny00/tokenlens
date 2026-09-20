@@ -1,19 +1,21 @@
 /**
  * TokenLens data ingestion layer.
  *
- * As of session 4: CMC's /v1/dex/security/detail and /v1/dex/holders/list
- * endpoints reject every parameter combination we've tried (see
- * docs/session-04.md) — reported to CMC hackathon support. Liquidity and
- * market-cap data comes from CMC's /v1/dex/search (confirmed working);
- * security/holder data comes from GoPlus's free public API instead
- * (see goplus.js). If GoPlus also fails, security_scan_available stays
- * false and scoring.js correctly caps the verdict at YELLOW rather than
- * guessing or defaulting to GREEN.
+ * Liquidity and market-cap data comes from CMC's /v1/dex/search (query
+ * parameter is `q` — `keyword` is silently ignored and returns a default
+ * list). Security/holder data comes from GoPlus's free public API (see
+ * goplus.js). If GoPlus fails, security_scan_available stays false and
+ * scoring.js caps the verdict at YELLOW rather than guessing or defaulting
+ * to GREEN.
+ *
+ * Note (session 5): CMC's /v1/dex/security/detail responds correctly to
+ * `platformName` + `address` — not yet wired in here.
  */
 
 const { fetchSecurityData } = require("./goplus");
 
 const BASE_URL = "https://pro-api.coinmarketcap.com";
+const REQUEST_TIMEOUT_MS = 15000;
 
 function authHeaders(apiKey) {
   return {
@@ -29,16 +31,49 @@ function hoursSince(epochMsOrIso) {
   return (Date.now() - then) / (1000 * 60 * 60);
 }
 
+// CMC timestamps are epoch milliseconds, sometimes as strings. The earliest
+// positive one is the best proxy for when the token first existed.
+function earliestTimestamp(...values) {
+  const nums = values.map(Number).filter((n) => Number.isFinite(n) && n > 0);
+  return nums.length > 0 ? Math.min(...nums) : null;
+}
+
+// EVM addresses are case-insensitive; Solana (base58) addresses are not.
+function sameAddress(a, b) {
+  if (!a || !b) return false;
+  if (a.startsWith("0x") && b.startsWith("0x")) return a.toLowerCase() === b.toLowerCase();
+  return a === b;
+}
+
+/**
+ * Picks the search result for tokenAddress. The same address can exist on
+ * several networks, so if a networkId is given only that network matches;
+ * otherwise the match with the deepest liquidity wins.
+ * Returns { match, others } — `others` are the same address on other networks.
+ */
+function pickMatch(results, { tokenAddress, networkId }) {
+  if (!tokenAddress) return { match: results[0] || null, others: [] };
+
+  const net = networkId === undefined || networkId === null ? NaN : Number(networkId);
+  const sameToken = results.filter((t) => sameAddress(t.addr, tokenAddress));
+  const candidates = Number.isFinite(net) ? sameToken.filter((t) => t.pltId === net) : sameToken;
+  const ranked = [...candidates].sort((a, b) => (Number(b.liq) || 0) - (Number(a.liq) || 0));
+  const match = ranked[0] || null;
+
+  return { match, others: match ? sameToken.filter((t) => t !== match) : [] };
+}
+
 /**
  * Searches CMC's DEX search endpoint for a token by keyword (symbol, name,
  * or contract address all work as search terms) and returns the entry
- * matching tokenAddress if given, or the first result otherwise.
+ * matching tokenAddress (on networkId, if given), or the first result
+ * when searching by keyword only.
  */
-async function fetchDexRecord(apiKey, { tokenAddress, keyword }, fetchImpl = fetch) {
+async function fetchDexRecord(apiKey, { tokenAddress, networkId, keyword }, fetchImpl = fetch) {
   const searchTerm = keyword || tokenAddress;
   const res = await fetchImpl(
-    `${BASE_URL}/v1/dex/search?keyword=${encodeURIComponent(searchTerm)}`,
-    { headers: authHeaders(apiKey) }
+    `${BASE_URL}/v1/dex/search?q=${encodeURIComponent(searchTerm)}`,
+    { headers: authHeaders(apiKey), signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }
   );
   const body = await res.json();
 
@@ -55,22 +90,27 @@ async function fetchDexRecord(apiKey, { tokenAddress, keyword }, fetchImpl = fet
     throw err;
   }
 
-  const match = tokenAddress
-    ? results.find((t) => t.addr && t.addr.toLowerCase() === tokenAddress.toLowerCase())
-    : results[0];
+  const { match, others } = pickMatch(results, { tokenAddress, networkId });
 
   if (!match) {
-    const err = new Error("Token address not found among DEX search results.");
+    const err = new Error(
+      networkId !== undefined && networkId !== null
+        ? "Token address not found on this network."
+        : "Token address not found among DEX search results."
+    );
     err.code = "NOT_FOUND";
     throw err;
   }
 
-  // Base record from CMC's confirmed-working search data.
+  // Base record from CMC's search data.
   const baseRecord = {
     source: "dex",
     address: match.addr,
     symbol: match.s,
     name: match.n,
+    network_id: match.pltId,
+    network_name: match.plt,
+    also_on_networks: others.map((t) => t.plt),
     security_scan_available: false,
     holder_data_available: false,
     is_honeypot: null,
@@ -84,25 +124,17 @@ async function fetchDexRecord(apiKey, { tokenAddress, keyword }, fetchImpl = fet
     volume_24h: match.v24h,
     price_usd: match.pu,
     price_change_24h_pct: match.pc24h,
-    contract_age_hours: hoursSince(Number(match.fpt || match.pt)),
+    contract_age_hours: hoursSince(earliestTimestamp(match.pt, match.fpt, match.fpct)),
   };
 
   // Try to enrich with GoPlus security data. Non-fatal if it fails —
   // the record above is still useful with security_scan_available: false.
-  const cmcNetworkId = identifierNetworkId(match);
   try {
-    const securityData = await fetchSecurityData(cmcNetworkId, match.addr, fetchImpl);
+    const securityData = await fetchSecurityData(match.pltId, match.addr, fetchImpl);
     return { ...baseRecord, ...securityData, security_source: "goplus" };
   } catch (securityErr) {
     return { ...baseRecord, security_fetch_error: securityErr.message };
   }
-}
-
-// The DEX search result doesn't directly return CMC's network_id, only
-// pltId (platform ID) — which happens to match CMC's network_id scheme
-// from /v1/dex/platform/list, so we reuse it directly.
-function identifierNetworkId(searchMatch) {
-  return searchMatch.pltId;
 }
 
 /**
@@ -112,8 +144,8 @@ function identifierNetworkId(searchMatch) {
  */
 async function fetchFallbackRecord(apiKey, { symbol }, fetchImpl = fetch) {
   const res = await fetchImpl(
-    `${BASE_URL}/v1/cryptocurrency/quotes/latest?symbol=${symbol}`,
-    { headers: authHeaders(apiKey) }
+    `${BASE_URL}/v1/cryptocurrency/quotes/latest?symbol=${encodeURIComponent(symbol)}`,
+    { headers: authHeaders(apiKey), signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }
   );
   const body = await res.json();
 
@@ -158,7 +190,7 @@ async function getTokenRecord(apiKey, identifier, fetchImpl = fetch) {
         security_scan_available: false,
         holder_data_available: false,
         contract_age_hours: null,
-        error: `Both DEX search and fallback lookups failed: ${fallbackErr.message}`,
+        error: `DEX search failed (${dexErr.code || "error"}: ${dexErr.message}) and the fallback lookup failed too (${fallbackErr.message}).`,
       };
     }
   }

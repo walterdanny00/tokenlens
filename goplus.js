@@ -7,12 +7,18 @@
  * GoPlus uses real EVM chain IDs (Ethereum=1, BSC=56, etc.) — different from
  * CMC's own internal network_id scheme — so CMC_NETWORK_TO_GOPLUS maps
  * between them. Solana isn't EVM and uses a separate GoPlus endpoint.
+ *
+ * Every field below is tri-state: true / false / null. null means GoPlus gave
+ * no answer — never treat it as "safe". Field handling was checked against
+ * real GoPlus responses (session 5): PEPE on Ethereum, BONK on Solana.
  */
 
 const GOPLUS_BASE = "https://api.gopluslabs.io/api/v1";
+const GOPLUS_TIMEOUT_MS = 12000;
 
 // Maps CMC's internal network_id (from /v1/dex/platform/list) to GoPlus's
 // EVM chain ID, or { solana: true } for Solana's separate endpoint.
+// NOTE: the CMC ids on the left are not yet verified against a live response.
 const CMC_NETWORK_TO_GOPLUS = {
   1: { evmChainId: "1" },     // Ethereum
   14: { evmChainId: "56" },   // BSC
@@ -22,9 +28,78 @@ const CMC_NETWORK_TO_GOPLUS = {
   28: { evmChainId: "43114" },// Avalanche
 };
 
+// Share of LP tokens that must be locked/burned to call liquidity "locked".
+// GoPlus lists only the top LP holders, so the share is a lower bound.
+const LP_LOCKED_MIN_SHARE = 0.5;
+
+// Concentrated-liquidity pools (Uniswap V3/V4-style, Orca Whirlpools, Raydium
+// CLMM, Meteora DLMM) hold positions as NFTs/bins rather than one fungible LP
+// token, so the classic "LP tokens locked/burned" check can't see them.
+const CONCENTRATED_RE = /v[34]\b|v[34]$|clmm|dlmm|whirlpool|concentrated|slipstream/i;
+
+// Share (0-100) of the listed pool liquidity that sits in concentrated pools,
+// or null when GoPlus lists no usable pools. `pools` entries are read via
+// typeOf(pool) and sizeOf(pool).
+function concentratedLiquidityPct(pools, typeOf, sizeOf) {
+  if (!Array.isArray(pools)) return null;
+  let total = 0;
+  let concentrated = 0;
+  for (const pool of pools) {
+    const size = parseFloat(sizeOf(pool));
+    if (!Number.isFinite(size) || size <= 0) continue;
+    total += size;
+    if (CONCENTRATED_RE.test(String(typeOf(pool) || ""))) concentrated += size;
+  }
+  return total > 0 ? (concentrated / total) * 100 : null;
+}
+
 function isZeroOrEmptyAddress(addr) {
   if (!addr) return true;
   return /^0x0*$/i.test(addr);
+}
+
+// GoPlus encodes booleans as "1"/"0" strings (sometimes numbers, sometimes
+// missing). Returns true/false, or null when GoPlus gave no answer.
+function flag(v) {
+  if (v === "1" || v === 1 || v === true) return true;
+  if (v === "0" || v === 0 || v === false) return false;
+  return null;
+}
+
+// Solana authority objects look like { authority: [...], status: "0" }.
+function authorityActive(field) {
+  return field && typeof field === "object" ? flag(field.status) : null;
+}
+
+function toInt(v) {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+// GoPlus reports each holder's share as a fraction (0.0883 = 8.83%).
+function topHoldersPct(holders, n = 10) {
+  if (!Array.isArray(holders) || holders.length === 0) return null;
+  return holders.slice(0, n).reduce((sum, h) => sum + (parseFloat(h.percent) || 0), 0) * 100;
+}
+
+// Fraction of LP tokens (among the listed holders) that are locked/burned,
+// or null when GoPlus has no LP-token data (e.g. Uniswap V3/V4 positions).
+function lockedLpShare(lpHolders) {
+  if (!Array.isArray(lpHolders) || lpHolders.length === 0) return null;
+  return lpHolders
+    .filter((h) => flag(h.is_locked) === true)
+    .reduce((sum, h) => sum + (parseFloat(h.percent) || 0), 0);
+}
+
+async function fetchGoPlusJson(url, fetchImpl, label) {
+  const res = await fetchImpl(url, { signal: AbortSignal.timeout(GOPLUS_TIMEOUT_MS) });
+  const body = await res.json();
+  if (body.code !== 1) {
+    const err = new Error(body.message || `${label} error`);
+    err.code = body.code;
+    throw err;
+  }
+  return body;
 }
 
 /**
@@ -32,16 +107,11 @@ function isZeroOrEmptyAddress(addr) {
  * Throws on failure — caller decides how to handle it.
  */
 async function fetchGoPlusEvm(evmChainId, tokenAddress, fetchImpl = fetch) {
-  const res = await fetchImpl(
-    `${GOPLUS_BASE}/token_security/${evmChainId}?contract_addresses=${tokenAddress}`
+  const body = await fetchGoPlusJson(
+    `${GOPLUS_BASE}/token_security/${evmChainId}?contract_addresses=${encodeURIComponent(tokenAddress)}`,
+    fetchImpl,
+    "GoPlus API"
   );
-  const body = await res.json();
-
-  if (body.code !== 1) {
-    const err = new Error(body.message || "GoPlus API error");
-    err.code = body.code;
-    throw err;
-  }
 
   const data = body.result && body.result[tokenAddress.toLowerCase()];
   if (!data) {
@@ -50,42 +120,43 @@ async function fetchGoPlusEvm(evmChainId, tokenAddress, fetchImpl = fetch) {
     throw err;
   }
 
+  const isHoneypot = flag(data.is_honeypot);
+  const lockedShare = lockedLpShare(data.lp_holders);
+  const canReclaimOwnership =
+    flag(data.can_take_back_ownership) === true || flag(data.hidden_owner) === true;
   const holders = Array.isArray(data.holders) ? data.holders : [];
-  const top10Pct = holders
-    .slice(0, 10)
-    .reduce((sum, h) => sum + (parseFloat(h.percent) || 0), 0) * 100;
-
-  const lpHolders = Array.isArray(data.lp_holders) ? data.lp_holders : [];
-  const liquidityLocked = lpHolders.some((h) => h.is_locked === "1" || h.is_locked === 1);
 
   return {
-    security_scan_available: true,
+    // No honeypot verdict from GoPlus (e.g. it couldn't simulate a trade) means
+    // no real scan — scoring.js then caps the verdict at YELLOW.
+    security_scan_available: isHoneypot !== null,
     holder_data_available: holders.length > 0,
-    is_honeypot: data.is_honeypot === "1",
-    mint_function_active: data.is_mintable === "1",
-    ownership_renounced: isZeroOrEmptyAddress(data.owner_address),
-    liquidity_locked: liquidityLocked,
+    holder_count: toInt(data.holder_count),
+    is_honeypot: isHoneypot,
+    mint_function_active: flag(data.is_mintable),
+    ownership_renounced:
+      data.owner_address === undefined
+        ? null
+        : isZeroOrEmptyAddress(data.owner_address) && !canReclaimOwnership,
+    liquidity_locked: lockedShare === null ? null : lockedShare >= LP_LOCKED_MIN_SHARE,
+    liquidity_locked_pct: lockedShare === null ? null : lockedShare * 100,
     liquidity_lock_days: null, // GoPlus doesn't reliably expose lock duration
-    top10_holder_pct: holders.length > 0 ? top10Pct : null,
+    concentrated_liquidity_pct: concentratedLiquidityPct(data.dex, (p) => p.liquidity_type, (p) => p.liquidity),
+    top10_holder_pct: topHoldersPct(holders),
   };
 }
 
 /**
  * Fetches and normalizes GoPlus security data for a Solana token.
- * Solana's response shape differs from EVM's — simpler, no lp_holders array
- * in the same form, so this is intentionally more conservative.
+ * The Solana response has no honeypot verdict and no LP-lock data; its risk
+ * signals are authorities (mint / freeze / balance-mutable) instead.
  */
 async function fetchGoPlusSolana(tokenAddress, fetchImpl = fetch) {
-  const res = await fetchImpl(
-    `${GOPLUS_BASE}/solana/token_security?contract_addresses=${tokenAddress}`
+  const body = await fetchGoPlusJson(
+    `${GOPLUS_BASE}/solana/token_security?contract_addresses=${encodeURIComponent(tokenAddress)}`,
+    fetchImpl,
+    "GoPlus Solana API"
   );
-  const body = await res.json();
-
-  if (body.code !== 1) {
-    const err = new Error(body.message || "GoPlus Solana API error");
-    err.code = body.code;
-    throw err;
-  }
 
   const data = body.result && body.result[tokenAddress];
   if (!data) {
@@ -94,15 +165,23 @@ async function fetchGoPlusSolana(tokenAddress, fetchImpl = fetch) {
     throw err;
   }
 
+  const mintActive = authorityActive(data.mintable);
+  const powers = [mintActive, authorityActive(data.freezable), authorityActive(data.balance_mutable_authority)];
+  const holders = Array.isArray(data.holders) ? data.holders : [];
+
   return {
-    security_scan_available: true,
-    holder_data_available: typeof data.holder_count === "number",
-    is_honeypot: data.is_honeypot === "1" || data.is_honeypot === 1,
-    mint_function_active: data.mintable && data.mintable.status === "1",
-    ownership_renounced: !data.balance_mutable_authority || data.balance_mutable_authority.status !== "1",
-    liquidity_locked: null, // not reliably exposed for Solana in the same shape
+    security_scan_available: powers.some((p) => p !== null),
+    holder_data_available: holders.length > 0,
+    holder_count: toInt(data.holder_count),
+    is_honeypot: null, // GoPlus's Solana endpoint gives no honeypot verdict
+    mint_function_active: mintActive,
+    // "Renounced" = no mint, freeze or balance-mutable authority remains.
+    ownership_renounced: powers.includes(true) ? false : powers.includes(null) ? null : true,
+    liquidity_locked: null, // not exposed for Solana
+    liquidity_locked_pct: null,
     liquidity_lock_days: null,
-    top10_holder_pct: null, // Solana response doesn't give a simple top-10 breakdown
+    concentrated_liquidity_pct: concentratedLiquidityPct(data.dex, (p) => p.type, (p) => p.tvl),
+    top10_holder_pct: topHoldersPct(holders),
   };
 }
 
