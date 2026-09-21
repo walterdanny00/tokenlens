@@ -179,8 +179,53 @@ const mk = (o) => async () => ({ json: async () => o });
   console.log("ALL PASS");
 }
 
+// GoPlus sometimes blips (a timeout, a hiccup). One quick retry smooths that over,
+// but answers that will never change (an unsupported chain) must not be retried.
+async function goplusRetries() {
+  const gp = require("./goplus");
+  const PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933";
+  const good = { code: 1, result: { [PEPE]: { is_honeypot: "0", is_mintable: "0", owner_address: "0x0", holder_count: "1000" } } };
+  // Plays back one step per call: an Error is thrown, anything else is returned as the JSON body.
+  const script = (...steps) => {
+    let i = 0;
+    const f = async () => {
+      const step = steps[Math.min(i++, steps.length - 1)];
+      if (step instanceof Error) throw step;
+      return { json: async () => step };
+    };
+    f.calls = () => i;
+    return f;
+  };
+
+  let f = script(good);
+  assert.strictEqual((await gp.fetchGoPlusEvm("1", PEPE, f)).is_honeypot, false);
+  assert.strictEqual(f.calls(), 1, "no retry when the first answer is fine");
+
+  f = script(new TypeError("fetch failed"), good);
+  assert.strictEqual((await gp.fetchGoPlusEvm("1", PEPE, f)).holder_count, 1000);
+  assert.strictEqual(f.calls(), 2, "a network blip is retried once");
+
+  f = script({ code: 2, message: "Service busy" }, good);
+  assert.strictEqual((await gp.fetchGoPlusEvm("1", PEPE, f)).is_honeypot, false);
+  assert.strictEqual(f.calls(), 2, "a service hiccup is retried once");
+
+  f = script(new TypeError("fetch failed"), { code: 2, message: "Service busy" });
+  await assert.rejects(() => gp.fetchGoPlusEvm("1", PEPE, f), /Service busy/);
+  assert.strictEqual(f.calls(), 2, "it gives up after one retry, with the latest error");
+
+  f = script({ code: 2, message: "Chain not supported" }, good);
+  await assert.rejects(() => gp.fetchGoPlusEvm("1", PEPE, f), /not supported/);
+  assert.strictEqual(f.calls(), 1, "an unsupported chain is not retried");
+
+  f = script({ code: 1, result: {} }, good);
+  await assert.rejects(() => gp.fetchGoPlusEvm("1", PEPE, f), /not found/i);
+  assert.strictEqual(f.calls(), 1, "a token GoPlus doesn't know is an answer, not a blip");
+  console.log("GOPLUS RETRY PASS");
+}
+
 (async () => {
   await routesAndIngestion();
   await scoringAndGoplus();
+  await goplusRetries();
   console.log("test_realdata: all passed");
 })().catch((e) => { console.error("test_realdata FAILED", e); process.exit(1); });

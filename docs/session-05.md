@@ -172,6 +172,13 @@
     Removed the unused `watchToken` client function since `/watch` no longer
     exists. Frontend now has 23 unit tests; the browser run covers the link.
 
+22. **The 2:31 PM missing-security-data was a blip.** Minutes later the API
+    returned a full answer and GoPlus answered directly with no problem. Added
+    one automatic retry (after 600 ms) for GoPlus failures that can pass —
+    network errors, timeouts, service hiccups. Permanent answers (unsupported
+    chain, token GoPlus doesn't know) are not retried, so nothing gets slower
+    when GoPlus answers first time. Covered by new tests in `test_realdata.js`.
+
 ## Open items carried into next session
 
 - **Re-confirm the safeguards on Render after the `TRUST_PROXY=3` change:**
@@ -184,11 +191,9 @@
 - **Turn the bot on in Render** (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`,
   `PUBLIC_URL`; optionally the two Upstash variables) and test it live:
   `/demo`, a bare address, `/watch`, `/list`.
-- **Investigate the missing security data** seen once at 2:31 PM (PEPE came back
-  without GoPlus data): check `degradedReason` from the API and GoPlus directly;
-  possible causes are a brief GoPlus outage or GoPlus rate-limiting Render's
-  shared outbound IP. If it recurs: retry once on failure, and/or use a free
-  GoPlus API key for higher limits.
+- **Watch for GoPlus blips recurring** (one seen, now retried once). If they
+  are frequent, use a free GoPlus API key for higher limits (GoPlus may be
+  rate-limiting Render's shared outbound address).
 - Tidy-up: `routes.js` still holds the old in-memory `handleWatch` /
   `handleWatchlist` helpers, now unused; remove them together with their tests
   in `test_routes.js` and `test_protection.js`.

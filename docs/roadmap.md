@@ -140,8 +140,8 @@ entries were reviewed.
 
 ## Next steps (in order)
 
-1. Look into the occasional missing GoPlus data (seen once, see the session
-   brief), then confirm the Upstash watchlist survives a redeploy.
+1. Confirm the Upstash watchlist survives a redeploy (watch a token, redeploy,
+   `/list`).
 2. Demo video (about 2 minutes): paste an address, show the verdict and the
    caveat, open the data, share the link, then the bot: Watch on Telegram,
    `/list` and `/demo`.

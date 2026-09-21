@@ -91,15 +91,30 @@ function lockedLpShare(lpHolders) {
     .reduce((sum, h) => sum + (parseFloat(h.percent) || 0), 0);
 }
 
+// A single quick retry smooths over the odd blip (a timeout, a rate-limit hiccup,
+// a 5xx) without slowing anything down when GoPlus answers first time. Answers
+// that will never change, like an unsupported chain, are not retried.
+const RETRY_DELAY_MS = 600;
+const isPermanent = (message) => /not supported|invalid/i.test(String(message || ""));
+
 async function fetchGoPlusJson(url, fetchImpl, label) {
-  const res = await fetchImpl(url, { signal: AbortSignal.timeout(GOPLUS_TIMEOUT_MS) });
-  const body = await res.json();
-  if (body.code !== 1) {
-    const err = new Error(body.message || `${label} error`);
-    err.code = body.code;
-    throw err;
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    try {
+      const res = await fetchImpl(url, { signal: AbortSignal.timeout(GOPLUS_TIMEOUT_MS) });
+      const body = await res.json();
+      if (body.code === 1) return body;
+      const err = new Error(body.message || `${label} error`);
+      err.code = body.code;
+      err.permanent = isPermanent(body.message);
+      throw err;
+    } catch (err) {
+      lastError = err;
+      if (err.permanent) break;
+    }
   }
-  return body;
+  throw lastError;
 }
 
 /**
