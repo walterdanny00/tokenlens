@@ -99,10 +99,14 @@ entries were reviewed.
    shareable links; friendly error messages and a slow-server notice. Built, tested (21 unit
    tests + a browser run against a mocked API) and **deployed on Vercel**.
    The "watch this token" button is deliberately absent until alerts exist.
-6. **Alerting layer** — Telegram bot; re-checks watched tokens on a
-   schedule and messages only when the verdict changes. Backend plumbing
-   (`/watch`, `/watchlist`) exists; the re-check loop and the bot itself
-   are **not started**.
+6. **Alerting layer** (`bot.js`, `telegram.js`, `store.js`, `watcher.js`) —
+   Telegram bot over a webhook (checked with a secret): a bare address gets a
+   verdict, `/watch` adds a watch, and a loop re-checks each watched token once
+   per interval and messages only when a *complete* check changes the verdict.
+   The watchlist is saved in Upstash Redis when configured, otherwise it is
+   memory-only. Built and tested; **needs its Render environment variables
+   and a live test**. The old public `/watch` and `/watchlist` routes were
+   removed (they would have exposed chat IDs).
 7. **MCP/agent layer** — stretch goal, built last, cut first if time is
    short. **Not started.**
 8. **Stack/infra** — Node/Express backend + React frontend. Backend on
@@ -124,8 +128,8 @@ entries were reviewed.
   PEPE -> Ethereum YELLOW; BONK -> Solana GREEN with a caveat, from the
   deployed site through the deployed API.
 - Known gaps: no Solana lock signal yet (GoPlus `dex[].burn_percent` is a
-  candidate); EVM lock status reads V2-style LP holders only; the watchlist
-  is in-memory (lost on restart); no alerts yet.
+  candidate); EVM lock status reads V2-style LP holders only; alerts are built
+  but not yet switched on in production.
 - Bug patterns to keep watching: `null < N` evaluating true in JS (found
   again in session 5), and treating "unknown" as "safe".
 - Key-safety setup complete: `.gitignore`, `.env.example`, `dotenv`; the key
@@ -136,17 +140,13 @@ entries were reviewed.
 
 ## Next steps (in order)
 
-1. Confirm the public-API safeguards on Render (`/ip` shows your real IP even
-   with a spoofed header, `X-Cache` HIT, a burst returning 429), then make the
-   GitHub repo public.
-2. Telegram alerting (layer 6): scheduled re-check loop + bot messaging on
-   verdict change, with a watchlist that survives restarts (or a deliberate
-   in-memory demo setup). The demo should show a live alert firing.
-3. Add the Watch button to the frontend once alerts work.
-4. Demo video (about 2 minutes): paste an address, show the verdict and the
-   caveat, open the data, share the link, show the alert.
-5. DoraHacks BUIDL submission before the Oct 1 deadline: description, live
+1. Turn the Telegram bot on in Render (bot token, webhook secret, public URL,
+   optionally Upstash) and test it live end to end.
+2. Add the "Watch on Telegram" button to the web app.
+3. Demo video (about 2 minutes): paste an address, show the verdict and the
+   caveat, open the data, share the link, then the bot: `/watch` and `/demo`.
+4. DoraHacks BUIDL submission before the Oct 1 deadline: description, live
    links, repo (public), video. Check the live links open without any login.
-6. Optional, strengthens the API-use story: add CMC's `security/detail` as a
+5. Optional, strengthens the API-use story: add CMC's `security/detail` as a
    second opinion next to GoPlus; correct the CMC support report.
-7. MCP layer (layer 7) — only if time allows.
+6. MCP layer (layer 7) — only if time allows.

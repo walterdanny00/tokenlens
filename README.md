@@ -125,9 +125,58 @@ Abridged example response:
 }
 ```
 
-In `data`, `null` always means unknown, never "no". Other routes: `GET /health`,
-`POST /watch` and `GET /watchlist` (an in-memory watchlist; alerts are not built
-yet).
+In `data`, `null` always means unknown, never "no". Other routes: `GET /health`
+and `POST /telegram/webhook` (called by Telegram only, and refused without a
+secret).
+
+## Telegram alerts
+
+Message the bot a token address and it replies with the same verdict, with a
+**Watch this token** button. Watched tokens are re-checked every 30 minutes, and
+the bot messages you when a token's verdict changes, for example from green to
+red.
+
+| Command | What it does |
+|---|---|
+| a bare address | Checks the token |
+| `/check <address> [network]` | The same, with a network if you know it |
+| `/watch <address> [network]` | Alert me if its verdict changes |
+| `/list` and `/unwatch <number>` | See and stop your watches |
+| `/demo` | Shows a clearly labelled sample alert |
+
+```mermaid
+flowchart LR
+  T[Telegram] -->|webhook, secret checked| A[API]
+  A --> B[Bot commands]
+  B --> S[(Watchlist)]
+  L[Re-check loop<br/>every 30 min] --> S
+  L -->|one lookup per token| C[Check pipeline]
+  L -->|verdict changed| T
+```
+
+How it stays trustworthy:
+
+- **Only complete checks count.** If a data source hiccups, the answer is partial
+  and looks worse than reality, so that token is skipped for the round. No false
+  alarm, and none when it recovers.
+- **Only verdict changes are sent.** The first full check just records where the
+  token stands.
+- **One lookup per token,** however many people watch it, spaced out to be gentle
+  with the CoinMarketCap rate limit.
+- **Limits:** 5 watches per person and 20 different tokens overall, adjustable.
+- Someone who blocks the bot is dropped automatically.
+- **Privacy:** the bot stores only your Telegram chat ID and the tokens you
+  watch, and `/list` and `/unwatch` only ever show your own.
+
+The watchlist is saved in Upstash Redis (free tier) when
+`UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are set. Without them it
+lives in memory, and the bot says so when you start watching.
+
+Every re-check of a token spends about one CoinMarketCap credit, so watching
+costs roughly `tokens x (1440 / minutes between checks)` credits a day. The
+defaults (at most 20 tokens, every 30 minutes) are at most 960 credits a day.
+Lower `MAX_WATCHED_TOKENS` or raise `WATCH_INTERVAL_MINUTES` if your plan has
+fewer.
 
 ## Keeping a public API safe
 
@@ -187,6 +236,13 @@ The web app talks to the deployed API by default. To use your local one, set
 | `RATE_LIMIT_PER_MIN` | backend | Checks allowed per visitor per minute (default 30) |
 | `MAX_LOOKUPS_PER_10_MIN` | backend | Lookups that reach the paid APIs, for everyone combined (default 100) |
 | `CACHE_TTL_SECONDS` | backend | How long a good answer is reused (default 60) |
+| `TELEGRAM_BOT_TOKEN` | backend | From @BotFather. A secret. The bot is off without it |
+| `TELEGRAM_WEBHOOK_SECRET` | backend | A long random string. A secret. Telegram sends it back on every call, and the API refuses anything without it |
+| `PUBLIC_URL` | backend | The API's public address, so Telegram knows where to send updates |
+| `WEB_APP_URL` | backend | The web app, for "Open the full check" links |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | backend | Keep the watchlist across restarts (optional) |
+| `WATCH_INTERVAL_MINUTES` | backend | Minutes between re-checks (default 30) |
+| `MAX_WATCHED_TOKENS`, `MAX_WATCHES_PER_USER` | backend | How much to watch (defaults 20 and 5) |
 | `VITE_API_URL` | frontend | Where the API lives |
 
 ## Tests
@@ -197,6 +253,7 @@ node test_ingestion.js
 node test_routes.js
 node test_realdata.js     # regression tests built from real captured responses
 node test_protection.js   # cache, rate limit and lookup budget
+node test_alerts.js       # Telegram bot, watchlist and alert loop
 cd frontend && npm test   # formatting and API-client tests
 ```
 
@@ -213,6 +270,8 @@ Ethereum, BONK on Solana) with the network mocked, so it runs offline.
 | `copyGenerator.js` | Plain-language message |
 | `routes.js`, `server.js` | The API |
 | `cache.js`, `rateLimit.js` | Answer cache and rate limiting |
+| `bot.js`, `telegram.js` | The Telegram bot and its API client |
+| `store.js`, `watcher.js` | The watchlist and the re-check loop |
 | `frontend/` | The web app |
 | `docs/` | Roadmap and a brief per working session |
 
@@ -227,7 +286,9 @@ Ethereum, BONK on Solana) with the network mocked, so it runs offline.
 - The API runs on a free host kept awake by a scheduled ping. The watchlist and
   the answer cache are in memory, so they are cleared on every redeploy or
   restart.
-- Alerts (Telegram) are planned, not built yet.
+- Alerts are checked every 30 minutes, not instantly, and only for verdict
+  changes (not price moves).
+- Without Upstash the watchlist is lost on every restart.
 
 ## Roadmap
 

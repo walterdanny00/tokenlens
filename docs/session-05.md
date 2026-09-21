@@ -140,6 +140,25 @@
     site: `/ip` shows your real address, also with a fake `X-Forwarded-For`. New `test_protection.js` (16 tests); the
     server wiring was also exercised through an offline Express stand-in.
 
+19. **Telegram alerts built** (layer 6). Bot over a webhook that only accepts
+    requests carrying `TELEGRAM_WEBHOOK_SECRET`; commands `/check`, `/watch`,
+    `/list`, `/unwatch`, `/demo` (a clearly labelled sample alert), a bare
+    address, a Watch button, and a `/start w_<networkId>_<address>` deep link
+    the web app can use later. A re-check loop (default every 30 minutes, one
+    lookup per distinct token, spaced out) alerts on verdict changes only, and
+    only from *complete* checks — a partial answer (a data source hiccup)
+    would look worse than reality, so it is skipped, avoiding a false alarm and
+    a second one on recovery. The first full check just sets a baseline. A
+    chat that blocks the bot is dropped. Limits: 5 watches per person, 20
+    distinct tokens. The watchlist is one JSON value in Upstash Redis (its REST
+    API, POST with a JSON command array) when `UPSTASH_REDIS_REST_URL` and
+    `_TOKEN` are set, else memory-only; a failed load never lets a later save
+    overwrite saved state. The public `POST /watch` and `GET /watchlist` were
+    removed. New `test_alerts.js` (31 tests); the webhook wiring was exercised
+    through the offline Express stand-in (secrets never appear in logs).
+    Credit maths: each re-check ~1 CMC credit, so up to 960 a day at the
+    defaults — lower `MAX_WATCHED_TOKENS` if the plan is small.
+
 ## Open items carried into next session
 
 - **Re-confirm the safeguards on Render after the `TRUST_PROXY=3` change:**
@@ -149,12 +168,15 @@
   CMC plan has few credits (default allows up to about 14,400 lookups a day).
 - **`GET /watchlist` is public.** Fine today, but when Telegram alerts are added
   it must never expose chat IDs — store those privately.
-- **Telegram alerting (layer 6) — next build.** Needs a scheduled re-check
-  loop, a Telegram bot, and a watchlist that survives restarts (the current
-  one is in-memory and is lost on every redeploy or restart). Decide storage
-  (a free hosted store, or accept in-memory for the demo and register the
-  token right before recording). A demo should show a live alert firing.
-- Add the Watch button to the frontend once alerts exist.
+- **Turn the bot on in Render** (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`,
+  `PUBLIC_URL`; optionally the two Upstash variables) and test it live:
+  `/demo`, a bare address, `/watch`, `/list`.
+- **Web app "Watch on Telegram" button** — a link to
+  `https://t.me/<bot>?start=w_<networkId>_<address>`; needs the bot's username
+  as `VITE_TELEGRAM_BOT` in Vercel.
+- Tidy-up: `routes.js` still holds the old in-memory `handleWatch` /
+  `handleWatchlist` helpers, now unused; remove them together with their tests
+  in `test_routes.js` and `test_protection.js`.
 - **Demo video and DoraHacks submission** before the Oct 1 deadline — make
   sure the GitHub repo is public (or judges can access it) and the live links
   work without any login (check the Vercel URL in a private tab).
