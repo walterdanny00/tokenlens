@@ -30,15 +30,19 @@ Render deployment.
 | `src/components/DataPanel.jsx` | "See the data": the numbers behind the verdict |
 | `src/api.js` | Calls the backend with a timeout and turns failures into plain messages |
 | `src/format.js` | Turns the backend's `data` into readable rows. Unknown is always shown as unknown |
-| `src/url.js` | Shareable links (`?token=...&network=...`) |
+| `src/url.js` | Shareable links (`?token=...&network=...`) and the Telegram watch link |
+| `src/config.js` | The Telegram bot's name |
 
 Notes:
 
 - The verdict never relies on color alone: each state has its own shape and words.
 - The free backend sleeps when idle; the page tells the visitor when the first
   check is waking it up.
-- `watchToken` in `src/api.js` is ready for the alerts feature. There is no
-  Watch button yet because alerts are not built.
+- **Watch on Telegram** opens the bot with a start link
+  (`https://t.me/<bot>?start=w_<networkId>_<address>`), and the bot starts
+  watching that token. The bot's name lives in `src/config.js` and can be
+  overridden with `VITE_TELEGRAM_BOT`. The button only appears once the network
+  is known.
 
 ## Deploy (Vercel)
 

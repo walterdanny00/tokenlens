@@ -339,6 +339,12 @@ label {
   cursor: pointer;
 }
 
+.band__watch {
+  display: inline-block;
+  color: inherit;
+  text-decoration: none;
+}
+
 .band__shared {
   font-size: 0.9375rem;
 }

@@ -131,8 +131,9 @@ secret).
 
 ## Telegram alerts
 
-Message the bot a token address and it replies with the same verdict, with a
-**Watch this token** button. Watched tokens are re-checked every 30 minutes, and
+Message [@tokenlens_bot](https://t.me/tokenlens_bot) a token address and it
+replies with the same verdict, with a **Watch this token** button. The web app has
+a **Watch on Telegram** button that opens the bot and starts the watch. Watched tokens are re-checked every 30 minutes, and
 the bot messages you when a token's verdict changes, for example from green to
 red.
 

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkToken, normalizeAddress, validateAddress, watchToken, CheckError } from "./api.js";
+import { checkToken, normalizeAddress, validateAddress, CheckError } from "./api.js";
 
 const PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933";
 const okBody = { verdict: "yellow", reasons: ["x"], data: {} };
@@ -76,15 +76,4 @@ test("caller-initiated abort is reported as aborted, not as an error to show", a
   const pending = checkToken({ address: PEPE, fetchImpl, baseUrl: "https://api.test", signal: controller.signal });
   controller.abort();
   await assert.rejects(pending, (e) => e.kind === "aborted");
-});
-
-test("watchToken posts the token and reports failures plainly", async () => {
-  let sent;
-  const ok = async (url, opts) => { sent = [url, JSON.parse(opts.body), opts.method]; return { ok: true, json: async () => ({ watching: true }) }; };
-  assert.deepEqual(await watchToken({ address: PEPE, networkId: 1, symbol: "PEPE", fetchImpl: ok, baseUrl: "https://api.test" }), { watching: true });
-  assert.deepEqual(sent, ["https://api.test/watch", { tokenAddress: PEPE, networkId: 1, symbol: "PEPE" }, "POST"]);
-  await assert.rejects(
-    watchToken({ address: PEPE, networkId: 1, fetchImpl: respond(400, { error: "nope" }), baseUrl: "https://api.test" }),
-    (e) => e.message === "nope"
-  );
 });

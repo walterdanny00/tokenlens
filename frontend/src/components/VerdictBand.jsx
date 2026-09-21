@@ -1,6 +1,8 @@
 import Lens from "./Lens.jsx";
 import { joinList, shortAddress } from "../format.js";
 import { verdictInfo } from "../verdict.js";
+import { telegramWatchUrl } from "../url.js";
+import { TELEGRAM_BOT } from "../config.js";
 
 export default function VerdictBand({
   result,
@@ -13,6 +15,7 @@ export default function VerdictBand({
   const data = result.data || {};
   const caveats = result.caveats || [];
   const others = result.alsoOnNetworks || [];
+  const watchUrl = telegramWatchUrl(TELEGRAM_BOT, result.networkId, result.tokenAddress);
 
   return (
     <section className={`band band--${info.kind}`} aria-labelledby="verdict-title">
@@ -59,6 +62,11 @@ export default function VerdictBand({
           <button type="button" className="band__share" onClick={onShare}>
             Share this check
           </button>
+          {watchUrl && (
+            <a className="band__share band__watch" href={watchUrl} target="_blank" rel="noopener noreferrer">
+              Watch on Telegram
+            </a>
+          )}
           <span className="band__shared" role="status">
             {shareNote}
           </span>

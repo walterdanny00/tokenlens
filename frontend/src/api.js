@@ -88,28 +88,3 @@ export async function checkToken({
   }
   return body;
 }
-
-/** Adds a token to the server-side watchlist (alerts are not built yet). */
-export async function watchToken({
-  address,
-  networkId,
-  symbol,
-  fetchImpl = fetch,
-  baseUrl = API_URL,
-}) {
-  let res;
-  try {
-    res = await fetchImpl(`${baseUrl}/watch`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ tokenAddress: address, networkId, symbol }),
-    });
-  } catch {
-    throw new CheckError("network", "Couldn't reach the server. Check your connection and try again.");
-  }
-  const body = await res.json().catch(() => null);
-  if (!res.ok) {
-    throw new CheckError("server", (body && body.error) || "Couldn't add that token to your watchlist.");
-  }
-  return body;
-}

@@ -159,6 +159,19 @@
     Credit maths: each re-check ~1 CMC credit, so up to 960 a day at the
     defaults — lower `MAX_WATCHED_TOKENS` if the plan is small.
 
+20. **Bot live and tested on a phone** (`@tokenlens_bot`, Upstash watchlist
+    active in the logs; BotFather menu, description and picture set): `/start`,
+    `/demo`, a bare address, the Watch button, `/list` and `/unwatch` all
+    worked. One check at 2:31 PM came back *partial* ("contract security
+    couldn't be verified"): the bot handled it correctly (yellow, watch added
+    without a baseline, `/list` shows an hourglass), but it means GoPlus data
+    can be missing at times — see open items.
+21. **"Watch on Telegram" button added to the web app** — links to
+    `https://t.me/tokenlens_bot?start=w_<networkId>_<address>` (shown once the
+    network is known; payload checked against Telegram's 64-character limit).
+    Removed the unused `watchToken` client function since `/watch` no longer
+    exists. Frontend now has 23 unit tests; the browser run covers the link.
+
 ## Open items carried into next session
 
 - **Re-confirm the safeguards on Render after the `TRUST_PROXY=3` change:**
@@ -171,9 +184,11 @@
 - **Turn the bot on in Render** (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`,
   `PUBLIC_URL`; optionally the two Upstash variables) and test it live:
   `/demo`, a bare address, `/watch`, `/list`.
-- **Web app "Watch on Telegram" button** — a link to
-  `https://t.me/<bot>?start=w_<networkId>_<address>`; needs the bot's username
-  as `VITE_TELEGRAM_BOT` in Vercel.
+- **Investigate the missing security data** seen once at 2:31 PM (PEPE came back
+  without GoPlus data): check `degradedReason` from the API and GoPlus directly;
+  possible causes are a brief GoPlus outage or GoPlus rate-limiting Render's
+  shared outbound IP. If it recurs: retry once on failure, and/or use a free
+  GoPlus API key for higher limits.
 - Tidy-up: `routes.js` still holds the old in-memory `handleWatch` /
   `handleWatchlist` helpers, now unused; remove them together with their tests
   in `test_routes.js` and `test_protection.js`.

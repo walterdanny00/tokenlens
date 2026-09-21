@@ -104,8 +104,8 @@ entries were reviewed.
    verdict, `/watch` adds a watch, and a loop re-checks each watched token once
    per interval and messages only when a *complete* check changes the verdict.
    The watchlist is saved in Upstash Redis when configured, otherwise it is
-   memory-only. Built and tested; **needs its Render environment variables
-   and a live test**. The old public `/watch` and `/watchlist` routes were
+   memory-only. Built, tested and **live** as `@tokenlens_bot`; the web app's
+   "Watch on Telegram" button opens it. The old public `/watch` and `/watchlist` routes were
    removed (they would have exposed chat IDs).
 7. **MCP/agent layer** — stretch goal, built last, cut first if time is
    short. **Not started.**
@@ -140,13 +140,13 @@ entries were reviewed.
 
 ## Next steps (in order)
 
-1. Turn the Telegram bot on in Render (bot token, webhook secret, public URL,
-   optionally Upstash) and test it live end to end.
-2. Add the "Watch on Telegram" button to the web app.
-3. Demo video (about 2 minutes): paste an address, show the verdict and the
-   caveat, open the data, share the link, then the bot: `/watch` and `/demo`.
-4. DoraHacks BUIDL submission before the Oct 1 deadline: description, live
+1. Look into the occasional missing GoPlus data (seen once, see the session
+   brief), then confirm the Upstash watchlist survives a redeploy.
+2. Demo video (about 2 minutes): paste an address, show the verdict and the
+   caveat, open the data, share the link, then the bot: Watch on Telegram,
+   `/list` and `/demo`.
+3. DoraHacks BUIDL submission before the Oct 1 deadline: description, live
    links, repo (public), video. Check the live links open without any login.
-5. Optional, strengthens the API-use story: add CMC's `security/detail` as a
+4. Optional, strengthens the API-use story: add CMC's `security/detail` as a
    second opinion next to GoPlus; correct the CMC support report.
-6. MCP layer (layer 7) — only if time allows.
+5. MCP layer (layer 7) — only if time allows.
