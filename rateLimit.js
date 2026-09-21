@@ -37,6 +37,22 @@ function createRateLimiter({ windowMs, max, now = Date.now, maxKeys = 50000 }) {
   return { hit };
 }
 
+// Several limits that must ALL allow a request, for example "per 10 minutes" and
+// "per day". They are checked in the order given and it stops at the first one
+// that says no, so a request that was refused never uses up the later limits.
+function combineLimiters(...limiters) {
+  return {
+    hit(key) {
+      let last;
+      for (const limiter of limiters) {
+        last = limiter.hit(key);
+        if (!last.allowed) return last;
+      }
+      return last;
+    },
+  };
+}
+
 // Express middleware: answers 429 with a plain-language message when over the limit.
 function rateLimitMiddleware(limiter, { keyFor = (req) => req.ip } = {}) {
   return (req, res, next) => {
@@ -51,4 +67,4 @@ function rateLimitMiddleware(limiter, { keyFor = (req) => req.ip } = {}) {
   };
 }
 
-module.exports = { createRateLimiter, rateLimitMiddleware };
+module.exports = { createRateLimiter, combineLimiters, rateLimitMiddleware };

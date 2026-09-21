@@ -86,6 +86,24 @@ flowchart LR
   GoPlus chain IDs; the mapping was verified against this list (it is not
   called at runtime).
 
+**Evidence of real calls.** The call itself is `fetchDexRecord` in `ingestion.js`, and
+real responses are committed in [`docs/evidence/`](docs/evidence): the CoinMarketCap
+search response for PEPE's address (trimmed to the matching tokens), and what
+TokenLens's own API returned for it.
+
+**What the API made possible.** One search by contract address returns the token on every
+network with liquidity, market cap, volume, price and first-pool times, which is what lets
+TokenLens take just an address. Each call reports its credit cost, which made budgeting a
+public service straightforward.
+
+**Where it got in the way.** The search parameter is `q` in the reference but `keyword` in
+the informal docs, and `keyword` is silently ignored, returning an unrelated list with no
+error. `security/detail` and `holders/list` answered a plain `BAD_REQUEST` for the
+parameter names we guessed; the documented `platformName` and `address` worked for
+`security/detail`, and we didn't get `holders/list` working. In the token detail we
+sampled, the holder count was 0 and the pool lock rates were empty, so holders and lock
+data come from GoPlus. The full write-up is in [`docs/submission.md`](docs/submission.md).
+
 Security details come from GoPlus (`/api/v1/token_security/{chainId}` for EVM
 networks and a separate endpoint for Solana). Networks with a full security scan:
 Ethereum, BNB Chain, Base, Arbitrum, Avalanche and Solana. Tokens on other
@@ -191,9 +209,10 @@ API protects them:
   header.
 - **Per-visitor rate limit.** 30 requests a minute per IP, answered with a plain
   message and a `Retry-After` header.
-- **Shared lookup budget.** At most 100 lookups per 10 minutes reach the paid
-  APIs across all visitors. Beyond that new tokens get a "very busy" answer
-  (HTTP 503) while already-cached tokens keep working.
+- **Shared lookup budget.** At most 100 lookups per 10 minutes, and 1,500 a day,
+  reach the paid APIs across all visitors. Beyond that new tokens get a "very busy"
+  answer (HTTP 503) while already-cached tokens keep working. The daily cap is a
+  hard stop so a monthly credit allowance can't run out.
 - `/` and `/health` are never limited and never call an upstream API, so a
   keep-alive ping is free.
 - The watchlist is capped at 500 entries.
@@ -236,6 +255,7 @@ The web app talks to the deployed API by default. To use your local one, set
 | `TRUST_PROXY` | backend | How many proxy hops to trust when reading a visitor's IP (default 3, which is right for Render; use 0 locally) |
 | `RATE_LIMIT_PER_MIN` | backend | Checks allowed per visitor per minute (default 30) |
 | `MAX_LOOKUPS_PER_10_MIN` | backend | Lookups that reach the paid APIs, for everyone combined (default 100) |
+| `MAX_LOOKUPS_PER_DAY` | backend | The same, over 24 hours (default 1500) |
 | `CACHE_TTL_SECONDS` | backend | How long a good answer is reused (default 60) |
 | `TELEGRAM_BOT_TOKEN` | backend | From @BotFather. A secret. The bot is off without it |
 | `TELEGRAM_WEBHOOK_SECRET` | backend | A long random string. A secret. Telegram sends it back on every call, and the API refuses anything without it |

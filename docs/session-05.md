@@ -137,7 +137,7 @@
     (`X-Forwarded-For` = client, Cloudflare edge, Render internal) and Render
     does not strip values a client sends, so the default is now **3** hops
     (trusting "all" would let a visitor spoof their IP). To confirm on the live
-    site: `/ip` shows your real address, also with a fake `X-Forwarded-For`. New `test_protection.js` (16 tests); the
+    site: `/ip` shows your real address, also with a fake `X-Forwarded-For`. New `test_protection.js` (18 tests); the
     server wiring was also exercised through an offline Express stand-in.
 
 19. **Telegram alerts built** (layer 6). Bot over a webhook that only accepts
@@ -179,6 +179,26 @@
     chain, token GoPlus doesn't know) are not retried, so nothing gets slower
     when GoPlus answers first time. Covered by new tests in `test_realdata.js`.
 
+23. **Read the official hackathon rules** (coinmarketcap.com/api/resources/api-hackathon).
+    Corrections and facts: submissions close **Wed 30 Sep 2026, 23:59 UTC** (not
+    Oct 1); judging 1–16 Oct; results 19 Oct. Required: public repo, working demo,
+    an X post with #BuildwithCMC linking the DoraHacks submission and the video,
+    the CMC endpoints named explicitly, visible evidence of a real API call (code
+    and response), a short note on what the API made possible and where it got in
+    the way, and one track. Judging (out of 100): does it work 30, usefulness 25,
+    interesting use of the API 20, code quality and documentation 15,
+    presentation 10. Keys must never be committed. Chosen track (recommended):
+    Markets and Trading Tools. New file `docs/submission.md` holds the BUIDL text,
+    the note, the X post, the video script and the checklist; the README gained the
+    endpoints, evidence pointer and the "made possible / got in the way" note.
+24. **The credit cliff after the event.** The free Startup tier lasts only while
+    the hackathon runs; on 30 Sep the key reverts to the free Basic tier (CMC
+    pages say 10,000 or 15,000 monthly credits), and judging runs to 16 Oct. Added
+    `MAX_LOOKUPS_PER_DAY` (default 1500) so a daily hard cap combines with the
+    10-minute budget (`combineLimiters`; a refused request never uses up the later
+    limit). Planned post-event settings: `MAX_LOOKUPS_PER_DAY=300`,
+    `MAX_WATCHED_TOKENS=5`, `WATCH_INTERVAL_MINUTES=60`.
+
 ## Open items carried into next session
 
 - **Re-confirm the safeguards on Render after the `TRUST_PROXY=3` change:**
@@ -197,7 +217,8 @@
 - Tidy-up: `routes.js` still holds the old in-memory `handleWatch` /
   `handleWatchlist` helpers, now unused; remove them together with their tests
   in `test_routes.js` and `test_protection.js`.
-- **Demo video and DoraHacks submission** before the Oct 1 deadline — make
+- **Demo video and DoraHacks submission** before **30 Sep 23:59 UTC** (aim for
+  29 Sep) — make
   sure the GitHub repo is public (or judges can access it) and the live links
   work without any login (check the Vercel URL in a private tab).
 - Correct/withdraw the CMC support report about `security/detail`.

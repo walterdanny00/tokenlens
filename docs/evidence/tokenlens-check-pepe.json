@@ -1,0 +1,36 @@
+{
+  "tokenAddress": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+  "networkId": 1,
+  "networkName": "Ethereum",
+  "alsoOnNetworks": [
+    "PulseChain",
+    "Unichain"
+  ],
+  "verdict": "yellow",
+  "reasons": [
+    "Liquidity isn't locked, so it could be pulled out. This token has been trading for a while, which lowers that risk but doesn't remove it."
+  ],
+  "caveats": [],
+  "message": "🟡 Proceed with caution. Liquidity isn't locked, so it could be pulled out. This token has been trading for a while, which lowers that risk but doesn't remove it. This is an automated check, not financial advice.",
+  "dataSource": "dex",
+  "degradedReason": null,
+  "data": {
+    "symbol": "PEPE",
+    "name": "Pepe",
+    "liquidityUsd": 37416896.29971383,
+    "marketCapUsd": 2075704818.055754,
+    "volume24hUsd": 8760703.093561092,
+    "priceUsd": 0.000004934049569069664,
+    "contractAgeHours": 30148.089181666666,
+    "holderCount": 594088,
+    "top10HolderPct": 38.280494282030446,
+    "isHoneypot": false,
+    "mintFunctionActive": false,
+    "liquidityLocked": false,
+    "liquidityLockedPct": 0.0091180278656357,
+    "concentratedLiquidityPct": 1.2579402797851875,
+    "ownershipRenounced": true,
+    "securityScanAvailable": true,
+    "securitySource": "goplus"
+  }
+}

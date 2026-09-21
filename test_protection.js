@@ -6,7 +6,7 @@
  */
 const assert = require("assert");
 const { TtlCache } = require("./cache");
-const { createRateLimiter, rateLimitMiddleware } = require("./rateLimit");
+const { createRateLimiter, combineLimiters, rateLimitMiddleware } = require("./rateLimit");
 const { handleCheck, handleWatch, makeWatchlist } = require("./routes");
 
 const tests = [];
@@ -122,6 +122,35 @@ test("middleware: sets headers, passes allowed requests, answers 429 in plain wo
   assert.equal(passed, 2);
   const r4 = mk(); mw({}, r4, () => passed++); // no IP at all must not crash
   assert.equal(passed, 3);
+});
+
+test("combined limits: all must allow, and a refusal doesn't use up the later limits", () => {
+  const now = fakeClock();
+  const short = createRateLimiter({ windowMs: 600000, max: 2, now });
+  const daily = createRateLimiter({ windowMs: 86400000, max: 3, now });
+  const both = combineLimiters(short, daily);
+  assert.equal(both.hit("k").allowed, true);
+  assert.equal(both.hit("k").allowed, true);
+  const refused = both.hit("k"); // the 10-minute limit says no
+  assert.equal(refused.allowed, false);
+  assert.equal(refused.retryAfterSec, 600);
+  assert.equal(daily.hit("other").remaining, 2, "the refused request did not touch the daily count");
+  assert.equal(daily.hit("k").remaining, 0, "daily count is exactly the 2 allowed requests plus this probe");
+});
+
+test("combined limits: the daily cap still holds after the short window resets", () => {
+  const now = fakeClock();
+  const both = combineLimiters(
+    createRateLimiter({ windowMs: 600000, max: 2, now }),
+    createRateLimiter({ windowMs: 86400000, max: 3, now })
+  );
+  assert.equal(both.hit("k").allowed && both.hit("k").allowed, true); // 2 used today
+  assert.equal(both.hit("k").allowed, false); // 10-minute limit
+  now.advance(600001); // a new 10-minute window
+  assert.equal(both.hit("k").allowed, true); // 3rd of the day
+  const capped = both.hit("k"); // short window has room, the day does not
+  assert.equal(capped.allowed, false);
+  assert.ok(capped.retryAfterSec > 80000, `retry in ${capped.retryAfterSec}s should be most of a day`);
 });
 
 // ---------- handleCheck with the safeguards on ----------

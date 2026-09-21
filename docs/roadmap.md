@@ -140,13 +140,18 @@ entries were reviewed.
 
 ## Next steps (in order)
 
-1. Confirm the Upstash watchlist survives a redeploy (watch a token, redeploy,
+Official deadline: **Wed 30 Sep 2026, 23:59 UTC** (aim to submit on the 29th).
+The full checklist, BUIDL text, X post and video script are in `docs/submission.md`.
+
+1. Commit the real-API evidence files (`docs/evidence/`), check the API key was
+   never committed, and make the GitHub repo public.
+2. Confirm the Upstash watchlist survives a redeploy (watch a token, redeploy,
    `/list`).
-2. Demo video (about 2 minutes): paste an address, show the verdict and the
-   caveat, open the data, share the link, then the bot: Watch on Telegram,
-   `/list` and `/demo`.
-3. DoraHacks BUIDL submission before the Oct 1 deadline: description, live
-   links, repo (public), video. Check the live links open without any login.
-4. Optional, strengthens the API-use story: add CMC's `security/detail` as a
+3. Record the demo video (about 2:30) and upload it.
+4. Post on X with #BuildwithCMC (video attached, DoraHacks link) and submit the
+   BUIDL: track Markets and Trading Tools, CMC account email registered.
+5. Before 30 Sep ends: lower the limits for the free tier that follows the event
+   (`MAX_LOOKUPS_PER_DAY=300`, `MAX_WATCHED_TOKENS=5`, `WATCH_INTERVAL_MINUTES=60`).
+6. Optional, strengthens the API-use story: add CMC's `security/detail` as a
    second opinion next to GoPlus; correct the CMC support report.
-5. MCP layer (layer 7) — only if time allows.
+7. MCP layer (layer 7) — only if time allows.

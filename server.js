@@ -11,7 +11,7 @@ const express = require("express");
 const cors = require("cors");
 const { handleCheck } = require("./routes");
 const { TtlCache } = require("./cache");
-const { createRateLimiter, rateLimitMiddleware } = require("./rateLimit");
+const { createRateLimiter, combineLimiters, rateLimitMiddleware } = require("./rateLimit");
 const { WatchStore, createMemoryAdapter, createUpstashAdapter } = require("./store");
 const { createTelegramClient } = require("./telegram");
 const { createBot } = require("./bot");
@@ -46,12 +46,13 @@ function envNumber(name, fallback) {
 // Safeguards, tunable from the environment without touching code:
 //   RATE_LIMIT_PER_MIN      checks allowed per visitor per minute
 //   MAX_LOOKUPS_PER_10_MIN  lookups that reach CoinMarketCap/GoPlus, for everyone combined
+//   MAX_LOOKUPS_PER_DAY     the same, per 24 hours: a hard cap so a monthly credit allowance can't run out
 //   CACHE_TTL_SECONDS       how long a good answer is reused
 const cache = new TtlCache({ maxEntries: 500 });
-const budget = createRateLimiter({
-  windowMs: 10 * 60 * 1000,
-  max: envNumber("MAX_LOOKUPS_PER_10_MIN", 100),
-});
+const budget = combineLimiters(
+  createRateLimiter({ windowMs: 10 * 60 * 1000, max: envNumber("MAX_LOOKUPS_PER_10_MIN", 100) }),
+  createRateLimiter({ windowMs: 24 * 60 * 60 * 1000, max: envNumber("MAX_LOOKUPS_PER_DAY", 1500) })
+);
 const perVisitor = createRateLimiter({
   windowMs: 60 * 1000,
   max: envNumber("RATE_LIMIT_PER_MIN", 30),

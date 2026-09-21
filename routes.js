@@ -40,7 +40,7 @@ const CACHE_TTL_MS = 60 * 1000; // a good answer is reused for a minute
 const DEGRADED_TTL_MS = 10 * 1000; // a partial answer only briefly, so a hiccup clears fast
 const MAX_WATCHLIST = 500;
 
-const BUSY = { error: "TokenLens is very busy right now. Please try again in a few minutes." };
+const BUSY = { error: "TokenLens is very busy right now. Please try again in a little while." };
 
 // EVM addresses are case-insensitive; Solana addresses are not.
 function cacheKey(tokenAddress, network, symbol) {
