@@ -83,9 +83,17 @@ export default function App() {
     if (phase === "done") headingRef.current?.focus();
   }, [phase, checks]);
 
+  // Typing or pasting a new address invalidates whatever network was picked for
+  // the last one (it's easy to leave a stale network selected, and a mismatch
+  // silently reports "not found" instead of checking the right chain).
+  function changeAddress(value) {
+    setAddress(value);
+    setNetwork("");
+  }
+
   async function paste() {
     try {
-      setAddress(normalizeAddress(await navigator.clipboard.readText()));
+      changeAddress(normalizeAddress(await navigator.clipboard.readText()));
     } catch {
       // Clipboard access was blocked; the visitor can still paste by hand.
     }
@@ -142,7 +150,7 @@ export default function App() {
                 id="address"
                 name="address"
                 value={address}
-                onChange={(e) => setAddress(e.target.value)}
+                onChange={(e) => changeAddress(e.target.value)}
                 placeholder="0x… or a Solana address"
                 autoComplete="off"
                 autoCapitalize="off"
