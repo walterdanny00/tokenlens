@@ -230,7 +230,7 @@ export default function App() {
         </div>
 
         {phase === "done" && result && (
-          <DataPanel data={result.data} degradedReason={result.degradedReason} />
+          <DataPanel data={result.data} degradedReason={result.degradedReason} simulated={result.simulated === true} />
         )}
       </main>
 

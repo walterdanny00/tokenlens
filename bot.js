@@ -6,6 +6,7 @@
 
 const { generateVerdictCopy } = require("./copyGenerator");
 const { isChatGone } = require("./telegram");
+const { SIM_ALIAS, SIM_ADDRESS } = require("./simulation");
 
 // EVM (0x + 40 hex) and Solana (base58) addresses both fit this.
 const ADDRESS_RE = /^[A-Za-z0-9]{20,70}$/;
@@ -51,7 +52,9 @@ function parseNetwork(word) {
 
 // "/check 0xabc solana" -> { address, networkId }, or { error }
 function parseTokenArgs(args) {
-  const [address, network] = args;
+  const [typed, network] = args;
+  // "/watch demo" is shorthand for the simulated demo token.
+  const address = typed && typed.toLowerCase() === SIM_ALIAS ? SIM_ADDRESS : typed;
   if (!address || !ADDRESS_RE.test(address)) {
     return { error: "Send me a token's full contract address, like /check 0x6982508145454ce325ddbe47a25d4ec3d2311933" };
   }
@@ -67,6 +70,9 @@ function createBot({
   webAppUrl,
   limiter, // optional per-chat rate limiter
   intervalMinutes = 30,
+  simulator, // optional: the simulated demo token
+  ownerChatId, // the only chat allowed to change the simulated token
+  runSimulationCycle, // () => re-checks only the simulated token's watchers
   logger = console,
 }) {
   const seenUpdates = [];
@@ -78,7 +84,7 @@ function createBot({
 
   const send = (chatId, text, opts) => telegram.sendMessage(chatId, text, opts);
 
-  const isComplete = (body) => body.dataSource === "dex" && !body.degradedReason;
+  const isComplete = (body) => (body.dataSource === "dex" || body.dataSource === "simulation") && !body.degradedReason;
 
   const titleOf = (body, address) =>
     `${(body.data && body.data.symbol) || "Token"} on ${body.networkName || "an unknown network"} (${shortAddress(address)})`;
@@ -153,6 +159,27 @@ function createBot({
     return send(chatId, `Stopped watching ${removed.symbol || "that token"} on ${removed.networkName || `network ${removed.networkId}`}.`);
   }
 
+  // Owner only: set the simulated token's state, then run the REAL re-check loop
+  // for its watchers straight away, so the alert arrives through the normal path.
+  async function doSimulate(chatId, args) {
+    const wanted = (args[0] || "").toLowerCase();
+    if (!wanted) {
+      return send(chatId, `The simulated token is ${EMOJI[simulator.state]} ${NAME[simulator.state]} right now. Use /simulate green, yellow, red or unknown.`);
+    }
+    if (!simulator.set(wanted)) return send(chatId, "Use /simulate green, yellow, red or unknown.");
+    await send(chatId, `Simulated token set to ${EMOJI[wanted]} ${NAME[wanted]}. Re-checking whoever watches it…`);
+    const stats = await runSimulationCycle();
+    if (stats && stats.skipped) {
+      return send(chatId, "I was in the middle of a re-check. Send that again in a few seconds.");
+    }
+    return send(
+      chatId,
+      stats && stats.alerts
+        ? `Done: ${stats.alerts} alert${stats.alerts === 1 ? "" : "s"} sent.`
+        : "Done, but nobody's verdict changed, so there was no alert. (Watch it first with /watch demo.)"
+    );
+  }
+
   function doDemo(chatId) {
     const text = [
       "🧪 Sample alert. This is not a real token.",
@@ -209,6 +236,16 @@ function createBot({
         return doUnwatch(chatId, args);
       case "/demo":
         return doDemo(chatId);
+      case "/myid":
+        return send(
+          chatId,
+          `Your chat ID is ${chatId}.` +
+            (ownerChatId === undefined ? " To use the owner-only /simulate command, set TELEGRAM_OWNER_CHAT_ID to this number." : "")
+        );
+      case "/simulate":
+        // To everyone else this command doesn't exist.
+        if (simulator && runSimulationCycle && ownerChatId !== undefined && chatId === ownerChatId) return doSimulate(chatId, args);
+        return send(chatId, "I don't know that command. Try /help.");
       default:
         return send(chatId, "I don't know that command. Try /help.");
     }
@@ -248,7 +285,8 @@ function createBot({
 function alertText(watch, oldVerdict, body) {
   const name = `${watch.symbol || "A token you watch"} on ${watch.networkName || "its network"}`;
   const copy = body.message || generateVerdictCopy({ verdict: body.verdict, reasons: body.reasons || [], caveats: body.caveats || [] });
-  return `🔔 ${name} changed from ${NAME[oldVerdict] || "Grey"} to ${NAME[body.verdict] || "Grey"}.\n\n${copy}`;
+  const simulated = body.simulated ? "🧪 Simulated demo token. Not real data.\n\n" : "";
+  return `${simulated}🔔 ${name} changed from ${NAME[oldVerdict] || "Grey"} to ${NAME[body.verdict] || "Grey"}.\n\n${copy}`;
 }
 
 module.exports = { createBot, alertText, parseTokenArgs, parseNetwork, ADDRESS_RE, EMOJI, NAME, shortAddress };

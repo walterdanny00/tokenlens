@@ -166,8 +166,9 @@ it easy to budget a public service.
    reason (liquidity isn't locked).
 2. Tap **BONK on Solana**: green, with a caveat about what couldn't be verified.
 3. Tap **Watch on Telegram**, press Start, and the bot begins watching.
-4. In the bot, send `/demo` for a clearly labelled sample alert, and `/list` for your
-   watches.
+4. In the bot, send `/watch demo` then (owner only) `/simulate red` to see a real
+   alert fire through the real code, using a clearly labelled simulated token.
+   `/demo` sends a text-only sample without watching anything.
 
 ### Honest limits
 
@@ -205,7 +206,8 @@ Keep the API key and the bot token off screen.
 | 0:45 | Tap BONK on Solana, green with caveat | "BONK is green, but look at the note: most of its liquidity sits in concentrated pools where a lock can't be verified. Green never hides what it couldn't check." |
 | 1:10 | Terminal: the real CoinMarketCap search call and response | "Underneath is CoinMarketCap's DEX API: one search by address finds the token on every network, with liquidity, market cap, volume and age." |
 | 1:30 | Web app: tap Watch on Telegram, then Start in the bot | "Tap Watch and the Telegram bot starts watching this token." |
-| 1:45 | In the bot: `/list`, then `/demo` | "Every 30 minutes it re-checks, and messages you only when the verdict changes. This is a sample alert, clearly labelled." |
+| 1:45 | In the bot: `/watch demo`, then `/simulate red` | "Real tokens don't flip on cue for a demo, so here's a clearly labelled simulated token — same scoring rules, same alert code, just made-up data. Watch it, flip it, and..." |
+| 1:55 | The alert arrives, marked 🧪 Simulated | "...there's the real alert, through the real alert loop." |
 | 2:05 | Architecture (README diagram) or the repo | "CoinMarketCap for the market data, GoPlus for the security scan, and safeguards so a public API doesn't burn credits." |
 | 2:20 | Web app home again | "TokenLens. Check a token before you buy it. Live now, and open source." |
 

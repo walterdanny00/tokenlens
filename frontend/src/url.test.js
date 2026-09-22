@@ -29,6 +29,11 @@ test("telegramWatchUrl stays under Telegram's 64 character limit for real addres
   }
 });
 
+test("telegramWatchUrl works for the simulated demo token's network", () => {
+  const SIM = "0x0d3a0d3a0d3a0d3a0d3a0d3a0d3a0d3a0d3a0d3a";
+  assert.equal(telegramWatchUrl("tokenlens_bot", 9999, SIM), `https://t.me/tokenlens_bot?start=w_9999_${SIM}`);
+});
+
 test("telegramWatchUrl gives nothing when the link couldn't work", () => {
   assert.equal(telegramWatchUrl("tokenlens_bot", null, PEPE), null);
   assert.equal(telegramWatchUrl("tokenlens_bot", undefined, PEPE), null);

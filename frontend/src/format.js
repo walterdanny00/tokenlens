@@ -67,7 +67,7 @@ export function joinList(items) {
   return `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
 }
 
-const SOURCE_NAMES = { goplus: "GoPlus" };
+const SOURCE_NAMES = { goplus: "GoPlus", simulation: "A simulation (not real)" };
 
 // tone: "good" | "bad" | "unknown" | "info"
 const row = (key, label, value, tone) => ({ key, label, value, tone });
@@ -80,7 +80,7 @@ export function buildRows(data = {}) {
     plainRow("liquidity", "Liquidity", formatUsd(data.liquidityUsd)),
     plainRow("marketCap", "Market cap", formatUsd(data.marketCapUsd)),
     plainRow("volume", "Trading volume, 24 hours", formatUsd(data.volume24hUsd)),
-    plainRow("age", "Trading for", formatAge(data.contractAgeHours)),
+    plainRow("age", "Token age", formatAge(data.contractAgeHours)),
     plainRow("holders", "Holders", formatCount(data.holderCount)),
     plainRow("top10", "Held by the top 10 wallets", formatPct(data.top10HolderPct, 1)),
   ];

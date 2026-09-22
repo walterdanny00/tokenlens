@@ -27,7 +27,7 @@ function Rows({ rows }) {
   );
 }
 
-export default function DataPanel({ data, degradedReason }) {
+export default function DataPanel({ data, degradedReason, simulated }) {
   const [open, setOpen] = useState(false);
   const { market, safety } = buildRows(data || {});
 
@@ -48,6 +48,7 @@ export default function DataPanel({ data, degradedReason }) {
 
       <div className="panel" id="data-panel" data-open={open}>
         <div className="panel__body">
+          {simulated && <p className="panel__note">Simulated data. None of these numbers are real.</p>}
           <h3 className="group__title">Safety checks</h3>
           <Rows rows={safety} />
           <h3 className="group__title">The market</h3>

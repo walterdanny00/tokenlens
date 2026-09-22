@@ -59,7 +59,7 @@ function cacheKey(tokenAddress, network, symbol) {
  * Without it, behaviour is exactly as before (handy for tests).
  */
 async function handleCheck(apiKey, { tokenAddress, networkId, symbol }, protection = {}) {
-  const { cache, budget, ttlMs = CACHE_TTL_MS, degradedTtlMs = DEGRADED_TTL_MS } = protection;
+  const { cache, budget, simulator, ttlMs = CACHE_TTL_MS, degradedTtlMs = DEGRADED_TTL_MS } = protection;
 
   let network;
   if (networkId !== undefined && networkId !== null && networkId !== "") {
@@ -67,6 +67,34 @@ async function handleCheck(apiKey, { tokenAddress, networkId, symbol }, protecti
     if (!Number.isFinite(network)) {
       return { status: 400, body: { error: "networkId must be a number." } };
     }
+  }
+
+  // Turns a token record into the API's answer. The same code serves real and
+  // simulated tokens, so a simulated verdict is scored by the real rules.
+  const respond = (record, extraCaveats = []) => {
+    const result = scoreToken(record);
+    const caveats = [...(result.caveats || []), ...extraCaveats];
+    const body = {
+      tokenAddress,
+      networkId: record.network_id ?? network ?? null,
+      networkName: record.network_name || null,
+      alsoOnNetworks: record.also_on_networks || [],
+      verdict: result.verdict,
+      reasons: result.reasons,
+      caveats,
+      message: generateVerdictCopy({ ...result, caveats }),
+      dataSource: record.source,
+      degradedReason: record.degraded_reason || record.error || record.security_fetch_error || null,
+      data: buildData(record),
+    };
+    if (record.simulated === true) body.simulated = true;
+    return { status: 200, body };
+  };
+
+  // The simulated demo token: never cached (a flip must show at once), never
+  // charged to the lookup budget, and never sent to an upstream API.
+  if (simulator && simulator.isSimulated(tokenAddress)) {
+    return respond(simulator.record(), [simulator.note]);
   }
 
   const compute = async () => {
@@ -77,25 +105,7 @@ async function handleCheck(apiKey, { tokenAddress, networkId, symbol }, protecti
 
     const identifier = { networkId: network, tokenAddress, symbol };
     const record = await getTokenRecord(apiKey, identifier);
-    const result = scoreToken(record);
-    const copy = generateVerdictCopy(result);
-
-    return {
-      status: 200,
-      body: {
-        tokenAddress,
-        networkId: record.network_id ?? network ?? null,
-        networkName: record.network_name || null,
-        alsoOnNetworks: record.also_on_networks || [],
-        verdict: result.verdict,
-        reasons: result.reasons,
-        caveats: result.caveats || [],
-        message: copy,
-        dataSource: record.source,
-        degradedReason: record.degraded_reason || record.error || record.security_fetch_error || null,
-        data: buildData(record),
-      },
-    };
+    return respond(record);
   };
 
   if (!cache) return compute();

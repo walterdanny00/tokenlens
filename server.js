@@ -16,6 +16,7 @@ const { WatchStore, createMemoryAdapter, createUpstashAdapter } = require("./sto
 const { createTelegramClient } = require("./telegram");
 const { createBot } = require("./bot");
 const { createWatcher } = require("./watcher");
+const { createSimulator } = require("./simulation");
 
 const app = express();
 
@@ -57,7 +58,9 @@ const perVisitor = createRateLimiter({
   windowMs: 60 * 1000,
   max: envNumber("RATE_LIMIT_PER_MIN", 30),
 });
-const protection = { cache, budget, ttlMs: envNumber("CACHE_TTL_SECONDS", 60) * 1000 };
+// A clearly labelled simulated token for demos (see simulation.js). It never reaches an upstream API.
+const simulator = createSimulator("green");
+const protection = { cache, budget, simulator, ttlMs: envNumber("CACHE_TTL_SECONDS", 60) * 1000 };
 const check = (params) => handleCheck(CMC_API_KEY, params, protection);
 
 // EVM (0x + 40 hex) and Solana (base58, 32-44 chars) addresses both fit this.
@@ -99,6 +102,8 @@ app.get("/check/:tokenAddress", async (req, res) => {
 //   WEB_APP_URL              the web app, for "Open the full check" links
 //   UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN   keep the watchlist across restarts (optional)
 //   WATCH_INTERVAL_MINUTES, MAX_WATCHED_TOKENS, MAX_WATCHES_PER_USER   how much to watch
+//   TELEGRAM_OWNER_CHAT_ID   your own chat ID (send the bot /myid): the only chat that can use
+//                            the owner-only /simulate command to flip the demo token
 const WEB_APP_URL = process.env.WEB_APP_URL || "https://tokenlens-eight.vercel.app";
 const WEBHOOK_PATH = "/telegram/webhook";
 const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET || "";
@@ -119,8 +124,18 @@ let telegram = null;
 let watcher = null;
 const intervalMinutes = envNumber("WATCH_INTERVAL_MINUTES", 30);
 
+const rawOwner = process.env.TELEGRAM_OWNER_CHAT_ID;
+const ownerChatId = rawOwner && /^-?\d+$/.test(rawOwner) ? Number(rawOwner) : undefined;
+
 if (process.env.TELEGRAM_BOT_TOKEN && webhookSecret) {
   telegram = createTelegramClient({ token: process.env.TELEGRAM_BOT_TOKEN });
+  watcher = createWatcher({
+    store,
+    check,
+    telegram,
+    webAppUrl: WEB_APP_URL,
+    intervalMs: intervalMinutes * 60 * 1000,
+  });
   bot = createBot({
     telegram,
     store,
@@ -128,13 +143,10 @@ if (process.env.TELEGRAM_BOT_TOKEN && webhookSecret) {
     webAppUrl: WEB_APP_URL,
     limiter: createRateLimiter({ windowMs: 60 * 1000, max: 12 }),
     intervalMinutes,
-  });
-  watcher = createWatcher({
-    store,
-    check,
-    telegram,
-    webAppUrl: WEB_APP_URL,
-    intervalMs: intervalMinutes * 60 * 1000,
+    simulator,
+    ownerChatId,
+    // Re-check only the simulated token's watchers, so the demo alert is instant and free.
+    runSimulationCycle: () => watcher.runCycle({ only: (token) => simulator.isSimulated(token.address) }),
   });
 } else if (process.env.TELEGRAM_BOT_TOKEN) {
   console.error("TELEGRAM_BOT_TOKEN is set but TELEGRAM_WEBHOOK_SECRET is not. The bot stays off until both are set.");
@@ -184,6 +196,7 @@ async function startBot() {
   }
   watcher.start();
   console.log(`Telegram bot: on; re-checking watched tokens every ${intervalMinutes} minutes`);
+  console.log(`Telegram bot: owner-only /simulate is ${ownerChatId === undefined ? "off (TELEGRAM_OWNER_CHAT_ID not set)" : "on"}`);
 }
 
 const PORT = process.env.PORT || 3000;

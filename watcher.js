@@ -45,13 +45,16 @@ function createWatcher({
     }
   }
 
-  /** One pass over every watched token. Returns counts, mainly for tests. */
-  async function runCycle() {
+  /**
+   * One pass over every watched token (or only those `only(token)` accepts).
+   * Returns counts, mainly for tests.
+   */
+  async function runCycle({ only } = {}) {
     if (running) return { skipped: true };
     running = true;
     const stats = { checked: 0, skipped: 0, alerts: 0 };
     try {
-      const tokens = store.tokens();
+      const tokens = store.tokens().filter((t) => (only ? only(t) : true));
       for (let i = 0; i < tokens.length; i++) {
         const token = tokens[i];
         if (i > 0) await sleepImpl(spacingMs);
@@ -64,7 +67,8 @@ function createWatcher({
           continue;
         }
         const body = res && res.body;
-        if (!res || res.status !== 200 || !body || body.degradedReason || body.dataSource !== "dex") {
+        const complete = body && (body.dataSource === "dex" || body.dataSource === "simulation");
+        if (!res || res.status !== 200 || !body || body.degradedReason || !complete) {
           stats.skipped++; // partial or failed: don't compare
           continue;
         }

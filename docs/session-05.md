@@ -199,6 +199,25 @@
     limit). Planned post-event settings: `MAX_LOOKUPS_PER_DAY=300`,
     `MAX_WATCHED_TOKENS=5`, `WATCH_INTERVAL_MINUTES=60`.
 
+25. **A simulated demo token, for showing a live alert on demand**
+    (`simulation.js`). Real tokens don't change verdict on cue; this one is
+    labelled "Simulated" everywhere (chip, caveat, data-panel note, alert
+    prefix), never reaches CoinMarketCap or GoPlus, and is scored by the exact
+    same `scoreToken`/`generateVerdictCopy` as a real token, so a flip travels
+    the real code path. `/watch demo` (a shorthand alias) or the web app's new
+    "Simulated demo token" example chip watches it. Only the owner
+    (`TELEGRAM_OWNER_CHAT_ID`, found with the new `/myid` command) can change
+    its state with `/simulate green|yellow|red|unknown`; to anyone else the
+    command doesn't exist. A flip immediately re-checks only that token's
+    watchers through the real watcher loop (`runCycle({ only })`, added to
+    `watcher.js`), so it costs no lookup budget and isn't cached (`routes.js`'s
+    `handleCheck` now short-circuits for the simulated address, before the
+    cache/budget path). New `test_simulation.js` (14 tests, including the full
+    watch-flip-alert path with two watchers) and a webhook-wiring scenario
+    (owner flips it, a guest can't, the HTTP route reflects the new state).
+    Frontend: the chip, "Simulated" network badge, and data-panel note (25
+    unit tests now; the browser run covers it end to end).
+
 ## Open items carried into next session
 
 - **Re-confirm the safeguards on Render after the `TRUST_PROXY=3` change:**
@@ -210,7 +229,10 @@
   it must never expose chat IDs — store those privately.
 - **Turn the bot on in Render** (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`,
   `PUBLIC_URL`; optionally the two Upstash variables) and test it live:
-  `/demo`, a bare address, `/watch`, `/list`.
+  `/demo`, a bare address, `/watch`, `/list`. — DONE, see items 20-21.
+- **Set `TELEGRAM_OWNER_CHAT_ID`** (send the live bot `/myid` to get the number)
+  so `/simulate` is usable for the demo video; test the full
+  watch-demo/flip/alert sequence live before recording.
 - **Watch for GoPlus blips recurring** (one seen, now retried once). If they
   are frequent, use a free GoPlus API key for higher limits (GoPlus may be
   rate-limiting Render's shared outbound address).

@@ -22,4 +22,10 @@ export const EXAMPLES = [
     address: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
     network: "16",
   },
+  // A clearly labelled fake token, used to demonstrate alerts. Not real data.
+  {
+    label: "Simulated demo token",
+    address: "0x0d3a0d3a0d3a0d3a0d3a0d3a0d3a0d3a0d3a0d3a",
+    network: "",
+  },
 ];

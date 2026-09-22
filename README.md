@@ -161,7 +161,8 @@ red.
 | `/check <address> [network]` | The same, with a network if you know it |
 | `/watch <address> [network]` | Alert me if its verdict changes |
 | `/list` and `/unwatch <number>` | See and stop your watches |
-| `/demo` | Shows a clearly labelled sample alert |
+| `/demo` | Shows a clearly labelled sample alert (text only, no watch involved) |
+| `/watch demo` (or the web app's "Simulated demo token") | Watch a clearly labelled **simulated** token, for showing a real alert on demand |
 
 ```mermaid
 flowchart LR
@@ -186,6 +187,14 @@ How it stays trustworthy:
 - Someone who blocks the bot is dropped automatically.
 - **Privacy:** the bot stores only your Telegram chat ID and the tokens you
   watch, and `/list` and `/unwatch` only ever show your own.
+- **Showing a real alert on demand.** Real tokens don't change verdict on cue, so
+  there's a simulated token (`simulation.js`) — labelled "Simulated" everywhere it
+  appears, never sent to CoinMarketCap or GoPlus, but scored by the exact same
+  rules as a real token. Only the bot's owner (`TELEGRAM_OWNER_CHAT_ID`, found with
+  `/myid`) can change its state with `/simulate green|yellow|red|unknown`, which
+  immediately re-checks its watchers through the real alert loop — so watching it
+  and flipping it produces a genuine alert through the genuine code path. To
+  everyone else `/simulate` doesn't exist.
 
 The watchlist is saved in Upstash Redis (free tier) when
 `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are set. Without them it

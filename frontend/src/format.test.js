@@ -86,6 +86,11 @@ test("dangerous values are flagged", () => {
   assert.deepEqual([s.sell.tone, s.mint.tone, s.owner.tone], ["bad", "bad", "bad"]);
 });
 
+test("a simulated source is named as one, never as a real provider", () => {
+  const s = byKey(buildRows({ ...pepe, securitySource: "simulation" }).safety);
+  assert.equal(s.scan.value, "A simulation (not real)");
+});
+
 test("empty data never claims anything is safe", () => {
   const { safety, market } = buildRows({});
   for (const r of [...safety, ...market]) assert.notEqual(r.tone, "good", r.key);
