@@ -95,15 +95,25 @@ the raw numbers. A casual trader can't tell what they mean.
 
 We also tried `/v1/dex/token` and `/v1/dex/security/detail`; both respond correctly
 with the documented parameters, and a CMC security second opinion is the next step.
+Worth noting: CMC's own security endpoint doesn't close the Solana honeypot gap either
+— its `solanaDisplay.rugPullStatus`/`fakeTokenStatus` came back "Unknown" even for
+BONK, a large, multi-year-established token. Neither provider runs an actual trade
+simulation on Solana; both only report authority flags and static tax rates.
 
 ### Design choices that matter
 
 - **Unknown is never safe.** Every security field is true, false or unknown. If a scan is
-  unavailable the verdict is capped at yellow.
+  unavailable the verdict is capped at yellow. Two different kinds of unknown are treated
+  differently: a specific token's check that was attempted but came back empty is always
+  a yellow reason, never excused; a check the data source doesn't run on that chain AT ALL
+  (e.g. no honeypot simulator on Solana) can be disclosed as a caveat instead — but only
+  once the token clears a strict bar of other evidence.
 - **A green never hides its limits.** Tokens with most liquidity in concentrated pools
-  can't have a classic liquidity lock verified. An old, liquid, widely held token with
-  clean mint and ownership can still be green, but the page shows a caveat saying exactly
-  what couldn't be verified. A known-unlocked pool is never excused.
+  can't have a classic liquidity lock verified, and Solana tokens can't have sellability
+  verified at all (no honeypot data exists there from any provider we found). An old,
+  liquid, widely held token with clean mint and ownership can still be green, with each
+  gap disclosed as its own caveat — a token can carry more than one. A known-bad result
+  is never excused this way, for either gap.
 - **No false alarms.** If a data source hiccups, the answer is partial. The alert loop
   skips it rather than raising an alarm, and another when it recovers.
 - **Built to stay open.** Answer cache, per-visitor rate limit and a lookup budget protect
@@ -157,14 +167,17 @@ it easy to budget a public service.
   source (GoPlus) for holders and liquidity locks.
 - **"Age".** `fpt` (first price time) said February 2025 for PEPE, while its first pool
   (`fpct`) dates from April 2023. We use the earliest timestamp available.
-- **Credits after the event.** Startup-tier access ends when submissions close, and the
-  free tier's monthly credits are far fewer, so we added a daily cap on lookups.
+- **Budgeting shared credits.** Our key is on the free Basic plan (15,000 credits a
+  month, about 480/day). A public site with no login could burn through that from
+  traffic alone, so we added a daily cap well under the average, leaving headroom for
+  both visitor checks and the alert bot's re-checks.
 
 ### Try it in 60 seconds
 
 1. Open https://tokenlens-eight.vercel.app/ and tap **PEPE on Ethereum**: yellow, with the
    reason (liquidity isn't locked).
-2. Tap **BONK on Solana**: green, with a caveat about what couldn't be verified.
+2. Tap **BONK on Solana**: green, with two caveats about what couldn't be verified —
+   liquidity lock and sellability, disclosed independently.
 3. Tap **Watch on Telegram**, press Start, and the bot begins watching.
 4. In the bot, send `/watch demo` then (owner only) `/simulate red` to see a real
    alert fire through the real code, using a clearly labelled simulated token.
@@ -173,8 +186,10 @@ it easy to budget a public service.
 ### Honest limits
 
 Automated checks can't promise a token is safe, and TokenLens says so on every result.
-GoPlus has no honeypot verdict for Solana, so that line reads "Not checked" there.
-Alerts run every 30 minutes, not instantly, and only for verdict changes.
+No honeypot/sellability data exists for Solana from GoPlus or CMC, so that line reads
+"Not checked" there for every Solana token, and a green result discloses it as its own
+caveat rather than implying it was confirmed. Alerts run every 30 minutes, not instantly,
+and only for verdict changes.
 
 ### What's next
 
@@ -203,7 +218,7 @@ Keep the API key and the bot token off screen.
 | 0:00 | Web app home | "Every day people buy tokens they can't judge: ones you can't sell, ones that can be minted without limit, ones whose liquidity can vanish. TokenLens tells you in plain words." |
 | 0:12 | Tap PEPE on Ethereum, yellow band | "Paste an address, no chain to pick. PEPE comes back yellow, and it says why: the liquidity isn't locked." |
 | 0:30 | Open "See the data" | "Behind the verdict, every number, and anything unknown is shown as unknown, never as safe." |
-| 0:45 | Tap BONK on Solana, green with caveat | "BONK is green, but look at the note: most of its liquidity sits in concentrated pools where a lock can't be verified. Green never hides what it couldn't check." |
+| 0:45 | Tap BONK on Solana, green with two caveats | "BONK is green, but look at these two notes: its liquidity lock can't be verified, and neither can whether it's sellable at all — no honeypot data exists for Solana anywhere. Green never hides what it couldn't check, and it can carry more than one gap." |
 | 1:10 | Terminal: the real CoinMarketCap search call and response | "Underneath is CoinMarketCap's DEX API: one search by address finds the token on every network, with liquidity, market cap, volume and age." |
 | 1:30 | Web app: tap Watch on Telegram, then Start in the bot | "Tap Watch and the Telegram bot starts watching this token." |
 | 1:45 | In the bot: `/watch demo`, then `/simulate red` | "Real tokens don't flip on cue for a demo, so here's a clearly labelled simulated token — same scoring rules, same alert code, just made-up data. Watch it, flip it, and..." |
@@ -211,17 +226,18 @@ Keep the API key and the bot token off screen.
 | 2:05 | Architecture (README diagram) or the repo | "CoinMarketCap for the market data, GoPlus for the security scan, and safeguards so a public API doesn't burn credits." |
 | 2:20 | Web app home again | "TokenLens. Check a token before you buy it. Live now, and open source." |
 
-## After submissions close (30 Sep)
+## Credit budget
 
-Event access to the Startup tier ends and the key reverts to the free Basic tier, and the
-site has to stay up through judging (1 to 16 Oct). Before then, in Render's Environment
-settings, set something like:
+Checked via `GET /v1/key/info` (costs no credits): our key is the free **Basic** plan,
+15,000 credits/month, resetting on the 1st. No Startup-tier upgrade was ever applied, so
+there's no "after the event" cliff to plan around — these are just the standing limits,
+set in Render's Environment:
 
 | Variable | Value | Why |
 |---|---|---|
-| `MAX_LOOKUPS_PER_DAY` | `300` | About 9,000 lookups a month, inside the free tier |
-| `MAX_WATCHED_TOKENS` | `5` | Fewer tokens to re-check |
-| `WATCH_INTERVAL_MINUTES` | `60` | Hourly re-checks: 5 tokens x 24 = 120 credits a day |
+| `MAX_LOOKUPS_PER_DAY` | `400` | Under the ~480/day average the monthly allowance implies, so a traffic burst can't exhaust it before judging ends |
+| `MAX_WATCHED_TOKENS` | `5` | Caps the alert bot's recurring re-check cost — 5 tokens every 30 min ≈ 240 credits/day, leaving ≈160/day for visitor checks |
+| `WATCH_INTERVAL_MINUTES` | left at the default (30) | The daily cap already protects the budget, so alerts can stay fast without a separate slowdown |
 
-The free tier's monthly credits differ between CoinMarketCap pages (10,000 or 15,000), so
-read your own plan and usage from `GET /v1/key/info`, which costs no credits.
+The simulated demo token (`/watch demo`, `/simulate`) never touches CoinMarketCap or
+GoPlus, so rehearsing or recording the alert flow costs nothing against this budget.

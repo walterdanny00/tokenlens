@@ -85,9 +85,12 @@ global.fetch = async (url, opts) => {
   assert.strictEqual(r.body.networkName, "Solana");
   assert.strictEqual(r.body.data.symbol, "Bonk");
   assert.strictEqual(r.body.verdict, "green");
-  assert.strictEqual(r.body.caveats.length, 1);
+  // Two independent coverage gaps on Solana, both disclosed: liquidity lock
+  // (concentrated pools) and honeypot detection (not run on Solana at all).
+  assert.strictEqual(r.body.caveats.length, 2);
   assert(Math.abs(r.body.data.concentratedLiquidityPct - 94.59) < 0.05, r.body.data.concentratedLiquidityPct);
   assert(r.body.message.includes("Liquidity lock can't be verified"));
+  assert(r.body.message.includes("couldn't verify whether this token can be sold"));
   const rLower = await getTokenRecord("k", { tokenAddress: BONK.toLowerCase(), networkId: 16 });
   assert.strictEqual(rLower.symbol, "FAKE");
 
@@ -128,7 +131,8 @@ const mk = (o) => async () => ({ json: async () => o });
   assert.strictEqual(none.concentrated_liquidity_pct, null);
 
   // ---- scoring ----
-  const bonk = { security_scan_available: true, is_honeypot: null, mint_function_active: false, ownership_renounced: true,
+  const bonk = { security_scan_available: true, is_honeypot: null, honeypot_check_supported: false,
+    mint_function_active: false, ownership_renounced: true,
     liquidity_locked: null, concentrated_liquidity_pct: 94.45, top10_holder_pct: 38.8, holder_count: 1019104,
     liquidity_usd: 929143, contract_age_hours: 30000 };
   const T = (name, rec, verdict, opts = {}) => {
@@ -139,19 +143,59 @@ const mk = (o) => async () => ({ json: async () => o });
     return r;
   };
   const g = T("BONK (established, CLMM-heavy)", bonk, "green", { caveat: true });
-  assert(/94%/.test(g.caveats[0]));
+  // Two independent structural gaps on Solana: liquidity lock (concentrated
+  // pools) and honeypot detection (not run on Solana at all). Both disclosed.
+  assert.strictEqual(g.caveats.length, 2);
+  assert(g.caveats.some((c) => /94%/.test(c)));
+  assert(g.caveats.some((c) => /couldn't verify whether this token can be sold/.test(c)));
   assert(/Checked and clear/.test(g.reasons[0]) && !/liquidity is locked/.test(g.reasons[0]));
   const msg = generateVerdictCopy(g);
   assert(/Liquidity lock can't be verified/.test(msg) && msg.endsWith("not financial advice."));
   console.log("  message:", msg);
 
+  // The two gaps are excused independently: known-locked liquidity leaves
+  // only the honeypot gap, and it alone is still enough for green.
+  const lockKnownGood = T("lock known true, honeypot gap only", { ...bonk, liquidity_locked: true }, "green", { caveat: true });
+  assert.strictEqual(lockKnownGood.caveats.length, 1);
+  assert(/couldn't verify whether this token can be sold/.test(lockKnownGood.caveats[0]));
+
+  // A per-token unknown (the check exists on this chain, e.g. EVM, but this
+  // token'"'"'s result came back empty) is never excused, no matter how
+  // established the token is — that'"'"'s the whole point of the flag.
+  const evmLikeNullHoneypot = T(
+    "EVM-like established token, per-token honeypot gap",
+    { ...bonk, honeypot_check_supported: true, liquidity_locked: true },
+    "yellow"
+  );
+  assert(evmLikeNullHoneypot.reasons.some((r) => /couldn't confirm whether this token can be sold/.test(r)));
+  assert(!evmLikeNullHoneypot.caveats, "a per-token gap is a reason, never a caveat");
+
+  // Missing (undefined) honeypot_check_supported behaves like true (strict:
+  // not explicitly a chain-level gap), so it'"'"'s never excused either.
+  const undefinedSupport = T("honeypot_check_supported undefined", { ...bonk, honeypot_check_supported: undefined, liquidity_locked: true }, "yellow");
+  assert(undefinedSupport.reasons.some((r) => /couldn't confirm whether this token can be sold/.test(r)));
+
+  // The honeypot gap alone, on a token that doesn'"'"'t clear the established
+  // bar, is a plain yellow reason, not a caveat.
+  const notEstablishedEnough = T("Solana honeypot gap, too young to excuse", { ...bonk, liquidity_locked: true, contract_age_hours: 24 * 10 }, "yellow");
+  assert(notEstablishedEnough.reasons.some((r) => /couldn't confirm whether this token can be sold/.test(r)));
+  assert(!notEstablishedEnough.caveats);
+
   T("age 60 days", { ...bonk, contract_age_hours: 24 * 60 }, "yellow");
   T("age 89 days", { ...bonk, contract_age_hours: 24 * 89 }, "yellow");
   T("age exactly 90 days", { ...bonk, contract_age_hours: 24 * 90 }, "green", { caveat: true });
   T("age unknown", { ...bonk, contract_age_hours: null }, "yellow");
-  T("concentrated 79%", { ...bonk, concentrated_liquidity_pct: 79 }, "yellow");
+  // Below 80% concentrated, the LOCK gap isn't excused (a yellow reason for it
+  // is pushed, keeping the verdict yellow) — but the shared established bar is
+  // still intact, so the separate honeypot gap is still excused into its own
+  // caveat. The two gaps are judged independently.
+  const c79 = T("concentrated 79%", { ...bonk, concentrated_liquidity_pct: 79 }, "yellow", { caveat: true });
+  assert(c79.reasons.some((r) => /couldn't confirm whether liquidity is locked/.test(r)));
+  assert(c79.caveats.some((c) => /couldn't verify whether this token can be sold/.test(c)));
   T("concentrated 80%", { ...bonk, concentrated_liquidity_pct: 80 }, "green", { caveat: true });
-  T("concentrated unknown", { ...bonk, concentrated_liquidity_pct: null }, "yellow");
+  const cUnk = T("concentrated unknown", { ...bonk, concentrated_liquidity_pct: null }, "yellow", { caveat: true });
+  assert(cUnk.reasons.some((r) => /couldn't confirm whether liquidity is locked/.test(r)));
+  assert(cUnk.caveats.some((c) => /couldn't verify whether this token can be sold/.test(c)));
   T("liquidity $249k", { ...bonk, liquidity_usd: 249000 }, "yellow");
   T("holders 9,999", { ...bonk, holder_count: 9999 }, "yellow");
   T("holders unknown", { ...bonk, holder_count: null }, "yellow");
@@ -161,14 +205,23 @@ const mk = (o) => async () => ({ json: async () => o });
   T("mint unknown", { ...bonk, mint_function_active: null }, "yellow");
   T("ownership still held", { ...bonk, ownership_renounced: false }, "yellow");
   T("ownership unknown", { ...bonk, ownership_renounced: null }, "yellow");
-  // known-unlocked is never excused
-  T("PEPE-like: lock known false", { ...bonk, liquidity_locked: false, concentrated_liquidity_pct: 99 }, "yellow");
+  // known-unlocked is never excused — but that's specifically about the LOCK
+  // gap; the shared bar is still intact, so the independent honeypot gap is
+  // still excused into its own caveat even while the lock issue keeps this
+  // token yellow overall.
+  const knownUnlocked = T("PEPE-like: lock known false", { ...bonk, liquidity_locked: false, concentrated_liquidity_pct: 99 }, "yellow", { caveat: true });
+  assert(knownUnlocked.reasons.some((r) => /Liquidity isn't locked/.test(r)));
+  assert(knownUnlocked.caveats.every((c) => !/94%|concentrated pools/.test(c)), "the lock gap itself must never be excused just because it's known-bad");
   // hard REDs beat the override
   T("honeypot", { ...bonk, is_honeypot: true }, "red");
   T("mint active", { ...bonk, mint_function_active: true }, "red");
   T("young + unlocked", { ...bonk, liquidity_locked: false, contract_age_hours: 10 }, "red");
-  // additive: other yellow flags still apply next to an eligible override
-  const lk = T("short lock days with lock known", { ...bonk, liquidity_locked: true, liquidity_lock_days: 5 }, "yellow");
+  // additive: other yellow flags still apply next to an eligible override.
+  // Here the lock itself is KNOWN (true), so there's no lock gap to excuse at
+  // all — but the honeypot gap is separate and still qualifies.
+  const lk = T("short lock days with lock known", { ...bonk, liquidity_locked: true, liquidity_lock_days: 5 }, "yellow", { caveat: true });
+  assert(lk.reasons.some((r) => /short period/.test(r)));
+  assert(lk.caveats.length === 1 && /couldn't verify whether this token can be sold/.test(lk.caveats[0]));
   // no scan => still capped
   T("no scan", { ...bonk, security_scan_available: false }, "yellow");
   // plain green keeps its old shape (no caveats key)

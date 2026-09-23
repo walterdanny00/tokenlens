@@ -15,23 +15,39 @@
  *   - If NEITHER security nor liquidity/age data is available, it's UNKNOWN.
  *
  * Security fields are tri-state: true / false / null (null or missing =
- * unknown, which is never treated as safe). GREEN is only returned when
- * every security field is answered and clean, and its explanation lists
- * only what was actually confirmed.
+ * unknown, which is never treated as safe — absence of evidence is never
+ * read as evidence of safety). GREEN is only returned when every security
+ * field is answered and clean, and its explanation lists only what was
+ * actually confirmed.
  *
- * The one exception is the ESTABLISHED_OVERRIDE below: a token that clears a
- * high bar (age, liquidity, holders, clean authorities) may have an
- * unverifiable liquidity lock treated as a caveat instead of a YELLOW reason.
+ * Two different kinds of "unknown" are treated differently:
+ *   - A per-token unknown (the check exists and was attempted for this
+ *     specific token, but came back empty) is always a YELLOW reason. It is
+ *     never excused, because it says nothing about tokens in general — only
+ *     that this particular check failed for this particular token.
+ *   - A structural coverage gap (the data source doesn't run that check on
+ *     this chain AT ALL — e.g. GoPlus has no honeypot simulator for Solana,
+ *     so is_honeypot is null for every Solana token) says nothing about the
+ *     token either. The ESTABLISHED_OVERRIDE below may excuse this kind of
+ *     gap into a caveat instead of a YELLOW reason, but ONLY when the token
+ *     clears a high bar of corroborating evidence elsewhere (age, liquidity,
+ *     holders, distribution, clean mint and ownership) — a coverage gap is
+ *     never enough justification for GREEN on its own. This currently
+ *     applies to two structural gaps: liquidity-lock verification on
+ *     concentrated-pool-heavy tokens, and honeypot detection on Solana. Both
+ *     can be excused independently, each with its own caveat, and each is
+ *     re-checked against the same bar every time — clearing it once for one
+ *     gap doesn't automatically excuse the other.
  */
 
 const BRAND_NEW_HOURS = 48;          // still-owned contract this young => RED
 const ESTABLISHED_HOURS = 24 * 30;   // unlocked liquidity is RED below this age
 const NEW_HOURS = 168;               // "new token" caution
 
-// "Established token" override. Only ever excuses ONE gap — a liquidity lock
-// that can't be verified because most liquidity sits in concentrated pools —
-// and only when every bar below is cleared. It never touches a known-unlocked
-// result, and every other RED/YELLOW check still runs at full strength.
+// "Established token" override. Excuses a STRUCTURAL coverage gap (never a
+// known-bad result, and never a per-token unknown) into a caveat, only when
+// every bar below is cleared. Every other RED/YELLOW check still runs at
+// full strength regardless.
 const ESTABLISHED_OVERRIDE = {
   minAgeHours: 24 * 90,
   minLiquidityUsd: 250000,
@@ -43,19 +59,37 @@ const ESTABLISHED_OVERRIDE = {
 const isUnknown = (v) => v === null || v === undefined;
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 
-function lockUnverifiableButEstablished(record, age) {
+// The shared bar: real age and liquidity, a broad holder base, and mint and
+// ownership both confirmed (not just unknown) clean. Doesn't look at the
+// specific gap being excused — callers check that separately.
+function isWellEstablished(record, age) {
   const t = ESTABLISHED_OVERRIDE;
   return (
-    isUnknown(record.liquidity_locked) &&
-    record.is_honeypot !== true &&
     record.mint_function_active === false &&
     record.ownership_renounced === true &&
     age !== null && age >= t.minAgeHours &&
     isNum(record.liquidity_usd) && record.liquidity_usd >= t.minLiquidityUsd &&
     isNum(record.holder_count) && record.holder_count >= t.minHolders &&
-    isNum(record.top10_holder_pct) && record.top10_holder_pct <= t.maxTop10Pct &&
+    isNum(record.top10_holder_pct) && record.top10_holder_pct <= t.maxTop10Pct
+  );
+}
+
+function lockUnverifiableButEstablished(record, age) {
+  const t = ESTABLISHED_OVERRIDE;
+  return (
+    isUnknown(record.liquidity_locked) &&
+    record.is_honeypot !== true &&
+    isWellEstablished(record, age) &&
     isNum(record.concentrated_liquidity_pct) && record.concentrated_liquidity_pct >= t.minConcentratedPct
   );
+}
+
+// Sellability (is_honeypot) is unknown for a structural reason (the chain's
+// data source has no honeypot check at all — see honeypot_check_supported in
+// goplus.js), not because this token's check failed. A genuine per-token
+// unknown (honeypot_check_supported === true) is never excused this way.
+function honeypotUnverifiableButEstablished(record, age) {
+  return record.honeypot_check_supported === false && isWellEstablished(record, age);
 }
 
 function scoreToken(record) {
@@ -79,6 +113,17 @@ function scoreToken(record) {
     if (record.is_honeypot === true) {
       reasons.push("This token can be bought but not sold — a honeypot.");
       return { verdict: "red", reasons };
+    } else if (isUnknown(record.is_honeypot)) {
+      if (honeypotUnverifiableButEstablished(record, age)) {
+        // A coverage gap, not evidence either way — but never hidden.
+        caveats.push(
+          "We couldn't verify whether this token can be sold: honeypot detection isn't available on this network. This doesn't mean it's a honeypot — this token is well established (90+ days, 10,000+ holders, real liquidity, clean mint and ownership), so we treat the missing check as a known coverage gap rather than a red flag."
+        );
+      } else {
+        reasons.push(
+          "We couldn't confirm whether this token can be sold. This doesn't mean it's a honeypot — we just don't have enough evidence to say either way."
+        );
+      }
     }
 
     if (record.mint_function_active === true) {

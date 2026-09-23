@@ -218,6 +218,51 @@
     Frontend: the chip, "Simulated" network badge, and data-panel note (25
     unit tests now; the browser run covers it end to end).
 
+26. **Fixed a scoring integrity bug: `is_honeypot === null` was silently
+    ignored.** Every other unknown security field (mint, ownership, liquidity
+    lock) had an explicit "couldn't confirm" handler; honeypot never got one.
+    On Solana, GoPlus returns `is_honeypot: null` for *every* token (it has no
+    honeypot simulator there at all) while `security_scan_available` can still
+    be true (from mint/freeze/balance authority data), so a clean Solana token
+    could reach GREEN with "Can you sell it? Not checked" sitting unflagged in
+    its own data panel — directly contradicting the project's stated "unknown
+    is never treated as safe" principle. Caught by re-reading the app with
+    fresh eyes; confirmed by checking whether CMC's `/v1/dex/security/detail`
+    could fill the Solana gap instead — it can't: BONK's own
+    `solanaDisplay.rugPullStatus`/`fakeTokenStatus` both came back "Unknown"
+    even from CMC, and its buy/sell-tax fields don't catch a honeypot anyway
+    (a token can show 0% tax and still block sells via other contract logic
+    — that needs a real trade simulation, which neither GoPlus nor CMC runs
+    on Solana).
+
+    Fix distinguishes two kinds of unknown (`goplus.js` now sets
+    `honeypot_check_supported: true` for EVM, `false` for Solana; `scoring.js`
+    generalized `lockUnverifiableButEstablished` into a shared
+    `isWellEstablished` check, reused by a new `honeypotUnverifiableButEstablished`):
+    a **per-token unknown** (the check exists and was attempted, but this
+    token's result came back empty) is always a YELLOW reason, never excused
+    — this already held for EVM implicitly (its `security_scan_available`
+    gates on `is_honeypot !== null`), now it's explicit and applies uniformly.
+    A **structural coverage gap** (the chain has no such check at all, for
+    any token) can be shown as a caveat instead, but only when the token
+    clears the same established-token bar used for the lock gap (age,
+    liquidity, holders, distribution, clean mint/ownership) — a coverage gap
+    alone is never enough for GREEN. The two gaps (lock, honeypot) are judged
+    completely independently against that shared bar, so a token can disclose
+    one, both, or neither.
+
+    Consequence: BONK stays GREEN (it clears the bar for both), but now shows
+    **two** caveats instead of one — both disclosed, neither hidden. A
+    smaller or younger Solana token without that track record now correctly
+    drops to YELLOW instead of a false GREEN. No frontend changes needed —
+    `VerdictBand.jsx` already maps over the full `caveats` array. Extended
+    `test_realdata.js` with dedicated boundary cases proving the two gaps are
+    excused independently (known-lock-but-honeypot-gap still reaches green
+    with exactly one caveat; a simulated EVM-like per-token gap never gets
+    excused regardless of how established the token otherwise looks). All
+    other suites (`test_protection`, `test_alerts`, `test_simulation`) needed
+    no changes — none of their fixtures hit this path.
+
 ## Open items carried into next session
 
 - **Re-confirm the safeguards on Render after the `TRUST_PROXY=3` change:**

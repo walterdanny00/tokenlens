@@ -72,12 +72,21 @@ entries were reviewed.
      concentration (top-10 > 50%), short lock duration, thin liquidity
      (<$10K), or contract age < 7 days. GREEN if none of the above, with copy
      that lists only what was actually confirmed.
-   - **Established-token override:** when the liquidity lock is *unknown*
-     (not known-unlocked) because most liquidity sits in concentrated pools,
-     a token that clears every bar — age >= 90 days, liquidity >= $250k,
-     >= 10,000 holders, top-10 <= 50%, >= 80% of liquidity in concentrated
-     pools, mint and ownership clean — can be GREEN with a visible caveat.
-     Strictly additive; every other flag applies at full strength.
+   - **Established-token override:** distinguishes a per-token unknown (a
+     check exists and was attempted for this token, but came back empty —
+     always a YELLOW reason, never excused) from a structural coverage gap
+     (the data source has no such check on this chain at all, for any
+     token — e.g. GoPlus runs no honeypot simulator on Solana). A structural
+     gap can be shown as a caveat instead of a YELLOW reason, but only when
+     the token clears a shared bar first: age >= 90 days, liquidity >= $250k,
+     >= 10,000 holders, top-10 <= 50%, mint and ownership clean. Two gaps use
+     this bar independently — liquidity-lock verification (further requires
+     >= 80% of liquidity in concentrated pools) and honeypot detection on
+     Solana — so a token can disclose one, both, or neither, and each is
+     judged on its own; passing the bar for one never excuses the other.
+     A known-bad result (e.g. liquidity known unlocked) is never excused by
+     either gap check. Strictly additive; every other flag applies at full
+     strength.
    - **No security scan available**: capped at YELLOW at most — never GREEN
      without a verified security scan.
    - **UNKNOWN**: neither security scan nor liquidity/age data available.

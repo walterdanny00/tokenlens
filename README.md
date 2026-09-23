@@ -40,12 +40,19 @@ automatically when opened.
 Two rules run through everything:
 
 1. **Unknown is never treated as safe.** Every security field is true, false or
-   unknown. If a scan isn't available the verdict is capped at yellow.
-2. **A green never hides its limits.** Some tokens hold most of their liquidity
-   in concentrated pools, where a classic liquidity lock can't be verified. A
-   token that is old, liquid and widely held, with clean mint and ownership, can
-   still be green, but the page shows a caveat saying exactly what couldn't be
-   verified. A known-unlocked pool is never excused this way.
+   unknown. If a scan isn't available the verdict is capped at yellow. A field
+   that a specific token's check genuinely couldn't answer is always a yellow
+   reason — never silently dropped, and never excused just because the token
+   looks otherwise clean.
+2. **A green never hides its limits.** Some things can't be checked at all for
+   an entire chain, not because of anything about the token — e.g. GoPlus runs
+   no honeypot simulator on Solana, so that field is unknown for every Solana
+   token, and no liquidity-lock check exists for concentrated pools. A token
+   that is old, liquid and widely held, with clean mint and ownership, can
+   still be green with those specific gaps shown as caveats — but each gap is
+   judged on its own, a token can carry more than one, and a genuinely unknown
+   or known-bad result for a check that *does* exist for that token is never
+   excused this way.
 
 The scoring rules live in one small pure function (`scoring.js`) with named
 thresholds, so they are easy to read and test.
@@ -310,7 +317,11 @@ Ethereum, BONK on Solana) with the network mocked, so it runs offline.
 - Automated checks can't promise a token is safe. TokenLens is not financial
   advice, and says so on every result.
 - GoPlus has no honeypot verdict for Solana, so that line reads "Not checked"
-  there. Solana risk is judged from the mint, freeze and balance authorities.
+  there for every Solana token — a green there discloses it as a caveat rather
+  than claiming sellability was confirmed. Solana risk is otherwise judged
+  from the mint, freeze and balance authorities. CMC's own security endpoint
+  doesn't close this gap either: its Solana `rugPullStatus`/`fakeTokenStatus`
+  fields come back "Unknown" too, even for large, established tokens.
 - Liquidity locks can't be verified for concentrated-liquidity pools; the app
   says so instead of guessing.
 - The API runs on a free host kept awake by a scheduled ping. The watchlist and

@@ -145,6 +145,11 @@ async function fetchGoPlusEvm(evmChainId, tokenAddress, fetchImpl = fetch) {
     // No honeypot verdict from GoPlus (e.g. it couldn't simulate a trade) means
     // no real scan — scoring.js then caps the verdict at YELLOW.
     security_scan_available: isHoneypot !== null,
+    // GoPlus DOES run a honeypot simulation on EVM chains, so a null here means
+    // this specific token's check failed or was inconclusive — not that the
+    // check is missing for the chain. scoring.js treats that as a genuine
+    // per-token unknown and never excuses it.
+    honeypot_check_supported: true,
     holder_data_available: holders.length > 0,
     holder_count: toInt(data.holder_count),
     is_honeypot: isHoneypot,
@@ -186,6 +191,11 @@ async function fetchGoPlusSolana(tokenAddress, fetchImpl = fetch) {
 
   return {
     security_scan_available: powers.some((p) => p !== null),
+    // GoPlus's Solana endpoint has no honeypot simulation at all — every Solana
+    // token gets null here, always. That's a coverage gap in the data source,
+    // not evidence about any particular token, so scoring.js may treat it
+    // differently from a genuine per-token unknown (see honeypot_check_supported).
+    honeypot_check_supported: false,
     holder_data_available: holders.length > 0,
     holder_count: toInt(data.holder_count),
     is_honeypot: null, // GoPlus's Solana endpoint gives no honeypot verdict
